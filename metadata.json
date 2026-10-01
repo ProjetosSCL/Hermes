@@ -1,0 +1,10 @@
+{
+  "name": "Remix Logística SCL - Gestão de Franquias",
+  "description": "Sistema de gestão logística de alta performance para franquias, rastreabilidade de máquinas POS, frota e produtividade de agentes em campo.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
