@@ -9,3 +9,8 @@ coverage/
 
 .vercel
 .env*
+
+dados-importacao/
+senhas_geradas*
+*.csv
+*.xlsx
