@@ -168,7 +168,7 @@ export default function App() {
       return;
     }
     try {
-      await api.inviteAgent({
+      const resultado = await api.inviteAgent({
         name: newAgentData.name,
         email: newAgentData.email,
         role: newAgentData.role,
@@ -178,11 +178,12 @@ export default function App() {
       });
       const refreshed = await api.fetchAgents();
       setAgentsList(refreshed);
+      alert(
+        `Agente criado!\n\nE-mail: ${resultado.email}\nSenha provisória: ${resultado.temporaryPassword}\n\nEnvie essa senha para a pessoa por um canal seguro (ex: WhatsApp direto). Ela pode trocar a senha depois de entrar.`
+      );
     } catch (err) {
       console.error(err);
-      alert(
-        'Não foi possível convidar o agente. Isso exige a Edge Function "invite-agent" publicada no Supabase — avise para configurarmos isso.'
-      );
+      alert('Não foi possível criar o agente. Tente novamente.');
     }
   };
 

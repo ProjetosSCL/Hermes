@@ -470,3 +470,384 @@ export async function addFuelLog(log: FuelLog, idempotencyKey: string): Promise<
     .eq('plate', log.vehiclePlate);
   if (updateError) throw updateError;
 }
+
+// ---------------------------------------------------------------------------
+// REMUNERAÇÃO (Fase 2) — salário, variável dos Green Angels e Camisa 10
+// ---------------------------------------------------------------------------
+export interface CompensationSettings {
+  tmaStoneTarget: number;
+  tmaTonTarget: number;
+  cicloTarget: number;
+  tmaStoneLowerIsBetter: boolean;
+  tmaTonLowerIsBetter: boolean;
+  cicloLowerIsBetter: boolean;
+  pctTmaStoneReversa: number;
+  pctTmaTonReversa: number;
+  pctCicloReversa: number;
+  pctTmaStoneNormal: number;
+  pctTmaTonNormal: number;
+  rebateDeductionPct: number;
+  camisa10BonusAmount: number;
+}
+
+export interface FranchiseMonthlyIndicator {
+  id?: string;
+  franchiseId: string;
+  year: number;
+  month: number;
+  tmaStoneActual: number | null;
+  tmaTonActual: number | null;
+  cicloActual: number | null;
+  rebateAmount: number;
+  totalServiceOrders: number;
+  notes?: string;
+}
+
+export interface AgentCompensationRecord {
+  id?: string;
+  agentId: string;
+  year: number;
+  month: number;
+  baseSalary: number;
+  doesReverseLogistics: boolean;
+  variablePct: number;
+  variableBonus: number;
+  maintenanceAllowance: number;
+  foodAllowance: number;
+  fuelAllowance: number;
+  lodgingAllowance: number;
+  notes?: string;
+}
+
+export interface Camisa10Lead {
+  id: string;
+  agentId: string;
+  leadDescription: string;
+  status: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+  bonusAmount: number | null;
+  createdAt: string;
+  approvedAt: string | null;
+}
+
+const num = (v: any, fallback = 0): number => (v === null || v === undefined ? fallback : Number(v));
+
+export async function fetchCompensationSettings(): Promise<CompensationSettings> {
+  const { data, error } = await supabase.from('compensation_settings').select('*').eq('id', true).single();
+  if (error) throw error;
+  return {
+    tmaStoneTarget: num(data.tma_stone_target),
+    tmaTonTarget: num(data.tma_ton_target),
+    cicloTarget: num(data.ciclo_target),
+    tmaStoneLowerIsBetter: data.tma_stone_lower_is_better,
+    tmaTonLowerIsBetter: data.tma_ton_lower_is_better,
+    cicloLowerIsBetter: data.ciclo_lower_is_better,
+    pctTmaStoneReversa: num(data.pct_tma_stone_reversa),
+    pctTmaTonReversa: num(data.pct_tma_ton_reversa),
+    pctCicloReversa: num(data.pct_ciclo_reversa),
+    pctTmaStoneNormal: num(data.pct_tma_stone_normal),
+    pctTmaTonNormal: num(data.pct_tma_ton_normal),
+    rebateDeductionPct: num(data.rebate_deduction_pct, 10),
+    camisa10BonusAmount: num(data.camisa10_bonus_amount),
+  };
+}
+
+export async function updateCompensationSettings(s: CompensationSettings): Promise<void> {
+  const { error } = await supabase
+    .from('compensation_settings')
+    .update({
+      tma_stone_target: s.tmaStoneTarget,
+      tma_ton_target: s.tmaTonTarget,
+      ciclo_target: s.cicloTarget,
+      tma_stone_lower_is_better: s.tmaStoneLowerIsBetter,
+      tma_ton_lower_is_better: s.tmaTonLowerIsBetter,
+      ciclo_lower_is_better: s.cicloLowerIsBetter,
+      pct_tma_stone_reversa: s.pctTmaStoneReversa,
+      pct_tma_ton_reversa: s.pctTmaTonReversa,
+      pct_ciclo_reversa: s.pctCicloReversa,
+      pct_tma_stone_normal: s.pctTmaStoneNormal,
+      pct_tma_ton_normal: s.pctTmaTonNormal,
+      rebate_deduction_pct: s.rebateDeductionPct,
+      camisa10_bonus_amount: s.camisa10BonusAmount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', true);
+  if (error) throw error;
+}
+
+function rowToIndicator(row: any): FranchiseMonthlyIndicator {
+  return {
+    id: row.id,
+    franchiseId: row.franchise_id,
+    year: row.year,
+    month: row.month,
+    tmaStoneActual: row.tma_stone_actual === null ? null : num(row.tma_stone_actual),
+    tmaTonActual: row.tma_ton_actual === null ? null : num(row.tma_ton_actual),
+    cicloActual: row.ciclo_actual === null ? null : num(row.ciclo_actual),
+    rebateAmount: num(row.rebate_amount),
+    totalServiceOrders: num(row.total_service_orders),
+    notes: row.notes ?? undefined,
+  };
+}
+
+export async function fetchFranchiseIndicators(year: number, month: number): Promise<FranchiseMonthlyIndicator[]> {
+  const { data, error } = await supabase
+    .from('franchise_monthly_indicators')
+    .select('*')
+    .eq('year', year)
+    .eq('month', month);
+  if (error) throw error;
+  return (data ?? []).map(rowToIndicator);
+}
+
+export async function upsertFranchiseIndicator(ind: FranchiseMonthlyIndicator): Promise<FranchiseMonthlyIndicator> {
+  const { data, error } = await supabase
+    .from('franchise_monthly_indicators')
+    .upsert(
+      {
+        franchise_id: ind.franchiseId,
+        year: ind.year,
+        month: ind.month,
+        tma_stone_actual: ind.tmaStoneActual,
+        tma_ton_actual: ind.tmaTonActual,
+        ciclo_actual: ind.cicloActual,
+        rebate_amount: ind.rebateAmount,
+        total_service_orders: ind.totalServiceOrders,
+        notes: ind.notes ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'franchise_id,year,month' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToIndicator(data);
+}
+
+/** Pede ao banco o % variável sugerido (regra por indicador, reversa x normal). */
+export async function calculateAngelVariablePct(
+  franchiseId: string,
+  year: number,
+  month: number,
+  doesReverseLogistics: boolean
+): Promise<number> {
+  const { data, error } = await supabase.rpc('calculate_angel_variable_pct', {
+    p_franchise_id: franchiseId,
+    p_year: year,
+    p_month: month,
+    p_does_reverse_logistics: doesReverseLogistics,
+  });
+  if (error) throw error;
+  return num(data);
+}
+
+// ---------------------------------------------------------------------------
+// Variável do Angel — o cálculo completo é feito pelo banco (passo a passo)
+// ---------------------------------------------------------------------------
+export interface AngelMonthlyIndicator {
+  id?: string;
+  agentId: string;
+  year: number;
+  month: number;
+  totalServiceOrders: number;
+}
+
+const rowToAngelIndicator = (r: any): AngelMonthlyIndicator => ({
+  id: r.id,
+  agentId: r.agent_id,
+  year: r.year,
+  month: r.month,
+  totalServiceOrders: num(r.total_service_orders),
+});
+
+export async function fetchAngelIndicators(year: number, month: number): Promise<AngelMonthlyIndicator[]> {
+  const { data, error } = await supabase
+    .from('angel_monthly_indicators')
+    .select('id,agent_id,year,month,total_service_orders')
+    .eq('year', year)
+    .eq('month', month);
+  if (error) throw error;
+  return (data ?? []).map(rowToAngelIndicator);
+}
+
+/** Grava só o total de OS do Angel no mês (não mexe nos demais campos da linha). */
+export async function upsertAngelOs(
+  agentId: string,
+  year: number,
+  month: number,
+  totalServiceOrders: number
+): Promise<AngelMonthlyIndicator> {
+  const { data, error } = await supabase
+    .from('angel_monthly_indicators')
+    .upsert(
+      {
+        agent_id: agentId,
+        year,
+        month,
+        total_service_orders: totalServiceOrders,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'agent_id,year,month' }
+    )
+    .select('id,agent_id,year,month,total_service_orders')
+    .single();
+  if (error) throw error;
+  return rowToAngelIndicator(data);
+}
+
+export interface AngelVariableCalc {
+  /** 'OK' ou o motivo de não ter calculado (SEM_REBATE, SEM_OS_ANGEL, ...) */
+  status: string;
+  doesReverseLogistics: boolean;
+  deductionPct: number;
+  rebateTotal: number | null;
+  rebateBonus: number | null;
+  franchiseOs: number | null;
+  angelOs: number | null;
+  angelRebate: number | null;
+  variablePct: number | null;
+  variableAmount: number | null;
+  hitTmaStone: boolean | null;
+  hitTmaTon: boolean | null;
+  hitCiclo: boolean | null;
+}
+
+const numOrNull = (v: any): number | null => (v === null || v === undefined ? null : Number(v));
+
+/**
+ * Pede ao banco o cálculo completo do variável de um Angel no mês:
+ * rebate total -> desconto -> parte do Angel (pelas OS) -> % dos indicadores -> R$.
+ */
+export async function calculateAngelVariable(agentId: string, year: number, month: number): Promise<AngelVariableCalc> {
+  const { data, error } = await supabase.rpc('calculate_angel_variable', {
+    p_agent_id: agentId,
+    p_year: year,
+    p_month: month,
+  });
+  if (error) throw error;
+  return {
+    status: String(data.status),
+    doesReverseLogistics: !!data.does_reverse_logistics,
+    deductionPct: num(data.deduction_pct, 10),
+    rebateTotal: numOrNull(data.rebate_total),
+    rebateBonus: numOrNull(data.rebate_bonus),
+    franchiseOs: numOrNull(data.franchise_os),
+    angelOs: numOrNull(data.angel_os),
+    angelRebate: numOrNull(data.angel_rebate),
+    variablePct: numOrNull(data.variable_pct),
+    variableAmount: numOrNull(data.variable_amount),
+    hitTmaStone: data.hit_tma_stone ?? null,
+    hitTmaTon: data.hit_tma_ton ?? null,
+    hitCiclo: data.hit_ciclo ?? null,
+  };
+}
+
+/** Marca se o Angel faz logística reversa (só Admin consegue; o banco confere). */
+export async function setReverseLogistics(agentId: string, value: boolean): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ does_reverse_logistics: value }).eq('id', agentId);
+  if (error) throw error;
+}
+
+function rowToCompensation(row: any): AgentCompensationRecord {
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    year: row.year,
+    month: row.month,
+    baseSalary: num(row.base_salary),
+    doesReverseLogistics: !!row.does_reverse_logistics,
+    variablePct: num(row.variable_pct),
+    variableBonus: num(row.variable_bonus),
+    maintenanceAllowance: num(row.maintenance_allowance),
+    foodAllowance: num(row.food_allowance),
+    fuelAllowance: num(row.fuel_allowance),
+    lodgingAllowance: num(row.lodging_allowance),
+    notes: row.notes ?? undefined,
+  };
+}
+
+export async function fetchCompensationRecords(year: number, month: number): Promise<AgentCompensationRecord[]> {
+  const { data, error } = await supabase
+    .from('agent_compensation_records')
+    .select('*')
+    .eq('year', year)
+    .eq('month', month);
+  if (error) throw error;
+  return (data ?? []).map(rowToCompensation);
+}
+
+export async function upsertCompensationRecord(rec: AgentCompensationRecord): Promise<AgentCompensationRecord> {
+  const { data, error } = await supabase
+    .from('agent_compensation_records')
+    .upsert(
+      {
+        agent_id: rec.agentId,
+        year: rec.year,
+        month: rec.month,
+        base_salary: rec.baseSalary,
+        does_reverse_logistics: rec.doesReverseLogistics,
+        variable_pct: rec.variablePct,
+        variable_bonus: rec.variableBonus,
+        maintenance_allowance: rec.maintenanceAllowance,
+        food_allowance: rec.foodAllowance,
+        fuel_allowance: rec.fuelAllowance,
+        lodging_allowance: rec.lodgingAllowance,
+        notes: rec.notes ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'agent_id,year,month' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToCompensation(data);
+}
+
+function rowToLead(row: any): Camisa10Lead {
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    leadDescription: row.lead_description,
+    status: row.status,
+    bonusAmount: row.bonus_amount === null ? null : num(row.bonus_amount),
+    createdAt: row.created_at,
+    approvedAt: row.approved_at,
+  };
+}
+
+export async function fetchCamisa10Leads(): Promise<Camisa10Lead[]> {
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToLead);
+}
+
+export async function createCamisa10Lead(agentId: string, leadDescription: string): Promise<Camisa10Lead> {
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .insert({ agent_id: agentId, lead_description: leadDescription })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToLead(data);
+}
+
+export async function reviewCamisa10Lead(
+  id: string,
+  decision: 'APROVADO' | 'REJEITADO',
+  bonusAmount?: number
+): Promise<Camisa10Lead> {
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .update({
+      status: decision,
+      bonus_amount: decision === 'APROVADO' ? bonusAmount ?? null : null,
+      approved_at: decision === 'APROVADO' ? new Date().toISOString() : null,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToLead(data);
+}
