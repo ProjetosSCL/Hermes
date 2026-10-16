@@ -741,6 +741,27 @@ export async function calculateAngelVariable(agentId: string, year: number, mont
   };
 }
 
+export interface AgentEquipment {
+  agentId: string;
+  jaqueta: string | null;
+  calca: string | null;
+  botas: string | null;
+  capacete: string | null;
+}
+
+/** Tamanhos de uniforme/EPI cadastrados (Admin vê todos; o banco filtra para os demais). */
+export async function fetchAgentEquipment(): Promise<AgentEquipment[]> {
+  const { data, error } = await supabase.from('agent_equipment').select('agent_id,jaqueta,calca,botas,capacete');
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    agentId: r.agent_id,
+    jaqueta: r.jaqueta ?? null,
+    calca: r.calca ?? null,
+    botas: r.botas ?? null,
+    capacete: r.capacete ?? null,
+  }));
+}
+
 /** Marca se o Angel faz logística reversa (só Admin consegue; o banco confere). */
 export async function setReverseLogistics(agentId: string, value: boolean): Promise<void> {
   const { error } = await supabase.from('profiles').update({ does_reverse_logistics: value }).eq('id', agentId);
