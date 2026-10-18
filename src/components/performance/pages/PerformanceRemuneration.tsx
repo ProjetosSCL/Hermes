@@ -12,6 +12,12 @@ import {
   XCircle,
   Plus,
   ShieldAlert,
+  Pencil,
+  Trash2,
+  Search,
+  Filter,
+  Calendar,
+  TrendingUp,
   Percent,
   DollarSign,
   MessageCircle,
@@ -68,12 +74,26 @@ const hit = (actual: number | null, target: number, lowerIsBetter: boolean): boo
   return lowerIsBetter ? actual <= target : actual >= target;
 };
 
-interface IndicatorDraft {
+interface RebateForm {
+  mode: "new" | "edit";
+  locked: boolean; // franquia e mês fixos (quando se clica em Editar numa linha)
+  existing: boolean; // já existia lançamento para esta franquia/mês
+  franchiseId: string;
+  year: number;
+  month: number;
+  rebate: string;
+  orders: string;
   tmaStone: string;
   tmaTon: string;
   ciclo: string;
-  rebate: string;
-  orders: string;
+  notes: string;
+}
+
+interface FranqRow {
+  franchise: Franchise;
+  ind: api.FranchiseMonthlyIndicator | null;
+  year: number;
+  month: number;
 }
 
 interface CompDraft {
@@ -200,8 +220,10 @@ const metaStr = (n: number) => n.toFixed(2).replace(".", ",");
 
 export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = () => {
   const now = new Date();
-  const [year, setYear] = useState<number>(now.getFullYear());
-  const [month, setMonth] = useState<number>(now.getMonth() + 1);
+  // O mês corrente ainda não fechou: a tela abre no mês anterior (competência vigente).
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const [year, setYear] = useState<number>(prevMonthDate.getFullYear());
+  const [month, setMonth] = useState<number>(prevMonthDate.getMonth() + 1);
   const [tab, setTab] = useState<Tab>("EXTRATO");
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
@@ -227,7 +249,12 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const simLoadedFor = useRef("");
   const periodKey = `${year}-${month}`;
 
-  const [indDrafts, setIndDrafts] = useState<Record<string, IndicatorDraft>>({});
+  const [rebateForm, setRebateForm] = useState<RebateForm | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ ind: api.FranchiseMonthlyIndicator; nome: string } | null>(null);
+  const [franqAll, setFranqAll] = useState(false);
+  const [allIndicators, setAllIndicators] = useState<api.FranchiseMonthlyIndicator[]>([]);
+  const [allLoaded, setAllLoaded] = useState(false);
+  const [franqSearch, setFranqSearch] = useState("");
   const [compDrafts, setCompDrafts] = useState<Record<string, CompDraft>>({});
   const [settingsDraft, setSettingsDraft] = useState<api.CompensationSettings | null>(null);
 
@@ -383,21 +410,55 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, selectedAngelId, periodKey, dataPeriod, calcsPeriod]);
 
-  // Rascunhos dos indicadores: reinicia quando mudam franquias/indicadores do mês
+  // "Todas as Competências": busca todos os meses de todas as franquias
+  const loadAllIndicators = async () => {
+    try {
+      setAllIndicators(await api.fetchAllFranchiseIndicators());
+      setAllLoaded(true);
+    } catch (err) {
+      console.error(err);
+      showToast("err", "Não foi possível carregar todas as competências.");
+    }
+  };
   useEffect(() => {
-    const drafts: Record<string, IndicatorDraft> = {};
-    franchises.forEach((f) => {
-      const ind = indicators.find((i) => i.franchiseId === f.id);
-      drafts[f.id] = {
-        tmaStone: fmt(ind?.tmaStoneActual),
-        tmaTon: fmt(ind?.tmaTonActual),
-        ciclo: fmt(ind?.cicloActual),
-        rebate: fmt(ind?.rebateAmount),
-        orders: ind ? String(ind.totalServiceOrders) : "",
-      };
-    });
-    setIndDrafts(drafts);
-  }, [franchises, indicators]);
+    if (isAdmin && tab === "FRANQUIAS" && franqAll) {
+      setAllLoaded(false);
+      loadAllIndicators();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, tab, franqAll]);
+
+  // No formulário de "Adicionar rebate": se a franquia/mês escolhidos já têm lançamento, carrega os valores
+  useEffect(() => {
+    if (!rebateForm || rebateForm.locked || !rebateForm.franchiseId) return;
+    let cancelled = false;
+    const { franchiseId, year: y, month: m } = rebateForm;
+    api
+      .fetchFranchiseIndicators(y, m)
+      .then((list) => {
+        if (cancelled) return;
+        const ex = list.find((i) => i.franchiseId === franchiseId);
+        setRebateForm((f) => {
+          if (!f || f.locked || f.franchiseId !== franchiseId || f.year !== y || f.month !== m) return f;
+          if (!ex) return { ...f, existing: false };
+          return {
+            ...f,
+            existing: true,
+            rebate: fmt(ex.rebateAmount),
+            orders: String(ex.totalServiceOrders),
+            tmaStone: fmt(ex.tmaStoneActual),
+            tmaTon: fmt(ex.tmaTonActual),
+            ciclo: fmt(ex.cicloActual),
+            notes: ex.notes ?? "",
+          };
+        });
+      })
+      .catch((err) => console.error(err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebateForm?.franchiseId, rebateForm?.year, rebateForm?.month, rebateForm?.locked]);
 
   // Rascunhos de remuneração: reinicia quando mudam Angels/registros do mês
   useEffect(() => {
@@ -431,26 +492,80 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   };
 
   // ------------------------------------------------------------------ ações
-  const saveIndicator = async (franchiseId: string) => {
-    const d = indDrafts[franchiseId];
-    if (!d) return;
+  const mergeIndicator = (list: api.FranchiseMonthlyIndicator[], saved: api.FranchiseMonthlyIndicator) => [
+    ...list.filter((i) => !(i.franchiseId === saved.franchiseId && i.year === saved.year && i.month === saved.month)),
+    saved,
+  ];
+
+  const openRebateForm = (franchiseId: string, y: number, m: number, ind: api.FranchiseMonthlyIndicator | null, locked: boolean) => {
+    setRebateForm({
+      mode: ind ? "edit" : "new",
+      locked,
+      existing: !!ind,
+      franchiseId,
+      year: y,
+      month: m,
+      rebate: ind ? fmt(ind.rebateAmount) : "",
+      orders: ind ? String(ind.totalServiceOrders) : "",
+      tmaStone: fmt(ind?.tmaStoneActual),
+      tmaTon: fmt(ind?.tmaTonActual),
+      ciclo: fmt(ind?.cicloActual),
+      notes: ind?.notes ?? "",
+    });
+  };
+
+  const saveRebateForm = async () => {
+    const f = rebateForm;
+    if (!f) return;
+    if (!f.franchiseId) {
+      showToast("err", "Escolha a franquia.");
+      return;
+    }
+    if (toNum(f.rebate) <= 0 && Math.round(toNum(f.orders)) <= 0) {
+      showToast("err", "Informe o rebate total ou o total de OS.");
+      return;
+    }
     try {
       const saved = await api.upsertFranchiseIndicator({
-        franchiseId,
-        year,
-        month,
-        tmaStoneActual: toNumOrNull(d.tmaStone),
-        tmaTonActual: toNumOrNull(d.tmaTon),
-        cicloActual: toNumOrNull(d.ciclo),
-        rebateAmount: toNum(d.rebate),
-        totalServiceOrders: Math.round(toNum(d.orders)),
+        franchiseId: f.franchiseId,
+        year: f.year,
+        month: f.month,
+        tmaStoneActual: toNumOrNull(f.tmaStone),
+        tmaTonActual: toNumOrNull(f.tmaTon),
+        cicloActual: toNumOrNull(f.ciclo),
+        rebateAmount: toNum(f.rebate),
+        totalServiceOrders: Math.round(toNum(f.orders)),
+        notes: f.notes.trim() === "" ? undefined : f.notes,
       });
-      setIndicators((prev) => [...prev.filter((i) => i.franchiseId !== franchiseId), saved]);
-      await loadCalcs();
-      showToast("ok", "Indicadores salvos.");
+      setAllIndicators((prev) => (allLoaded ? mergeIndicator(prev, saved) : prev));
+      if (saved.year === year && saved.month === month) {
+        setIndicators((prev) => mergeIndicator(prev, saved));
+        await loadCalcs();
+      } else if (!franqAll) {
+        setYear(saved.year); // mostra o mês que acabou de ser lançado
+        setMonth(saved.month);
+      }
+      setRebateForm(null);
+      showToast("ok", "Lançamento de rebate salvo.");
     } catch (err) {
       console.error(err);
-      showToast("err", "Não foi possível salvar os indicadores.");
+      showToast("err", "Não foi possível salvar o lançamento.");
+    }
+  };
+
+  const deleteRebate = async () => {
+    const c = confirmDelete;
+    if (!c || !c.ind.id) return;
+    try {
+      await api.deleteFranchiseIndicator(c.ind.id);
+      setIndicators((prev) => prev.filter((i) => i.id !== c.ind.id));
+      setAllIndicators((prev) => prev.filter((i) => i.id !== c.ind.id));
+      setConfirmDelete(null);
+      await loadCalcs();
+      showToast("ok", "Lançamento excluído.");
+    } catch (err) {
+      console.error(err);
+      showToast("err", "Não foi possível excluir o lançamento.");
     }
   };
 
@@ -668,6 +783,66 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const simResult = settings ? simulateAngelVariable(settings, simInput) : null;
   const setSimField = (patch: Partial<SimDraft>) => setSim((prev) => ({ ...prev, ...patch }));
 
+  // ---- aba Franquias & Rebate
+  const dedPct = settings?.rebateDeductionPct ?? 10;
+  const vigY = prevMonthDate.getFullYear();
+  const vigM = prevMonthDate.getMonth() + 1;
+  const ehVigente = (y: number, m: number) => y === vigY && m === vigM;
+  const semAcentoLower = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const franqRowsBase: FranqRow[] = [];
+  if (franqAll) {
+    allIndicators.forEach((i) => {
+      const f = franchises.find((x) => x.id === i.franchiseId);
+      if (f) franqRowsBase.push({ franchise: f, ind: i, year: i.year, month: i.month });
+    });
+    franqRowsBase.sort(
+      (a, b) => b.year - a.year || b.month - a.month || a.franchise.name.localeCompare(b.franchise.name, "pt-BR")
+    );
+  } else {
+    [...franchises]
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+      .forEach((f) =>
+        franqRowsBase.push({ franchise: f, ind: indicators.find((i) => i.franchiseId === f.id) ?? null, year, month })
+      );
+  }
+  const buscaN = semAcentoLower(franqSearch.trim());
+  const franqRows = buscaN
+    ? franqRowsBase.filter((r) => semAcentoLower(`${r.franchise.name} ${r.franchise.cityRegion}`).includes(buscaN))
+    : franqRowsBase;
+  const franqLancadas = franqRows.filter((r) => r.ind);
+  const kRebate = franqLancadas.reduce((sum, r) => sum + (r.ind?.rebateAmount ?? 0), 0);
+  const kOs = franqLancadas.reduce((sum, r) => sum + (r.ind?.totalServiceOrders ?? 0), 0);
+  const kDed = (kRebate * dedPct) / 100;
+  const kBase = kRebate - kDed;
+  const chipsComp = [0, 1, 2].map((k) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1 - k, 1);
+    return { y: d.getFullYear(), m: d.getMonth() + 1 };
+  });
+  const franqDataPronta = franqAll ? allLoaded : ready;
+  const chipIndicador = (rotulo: string, valor: number | null, meta: number, menorMelhor: boolean) => {
+    const ok = hit(valor, meta, menorMelhor);
+    const cls = ok === null ? "bg-slate-100 text-slate-400" : ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
+    return (
+      <span
+        key={rotulo}
+        title={`${rotulo}: ${valor === null ? "sem dado" : metaStr(valor)} (meta ${menorMelhor ? "≤" : "≥"} ${metaStr(meta)})`}
+        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap ${cls}`}
+      >
+        {rotulo} {ok === null ? "—" : ok ? "✓" : "✗"}
+      </span>
+    );
+  };
+  const kpi = (rotulo: string, icone: React.ReactNode, valor: React.ReactNode, sub: React.ReactNode, destaque = false) => (
+    <div className={`rounded-2xl border p-4 ${destaque ? "bg-emerald-50 border-emerald-300" : "bg-white border-slate-200"}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">{rotulo}</p>
+        <span className={destaque ? "text-emerald-600" : "text-slate-400"}>{icone}</span>
+      </div>
+      <p className={`mt-2 text-xl font-black ${destaque ? "text-emerald-700" : "text-slate-900"}`}>{valor}</p>
+      <p className={`mt-0.5 text-[10px] font-bold ${destaque ? "text-emerald-700" : "text-slate-500"}`}>{sub}</p>
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       {toast && (
@@ -702,6 +877,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
       </div>
 
       {/* Barra de seleção: Angel + período */}
+      {tab !== "FRANQUIAS" && (
       <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
         {(tab === "EXTRATO" || tab === "SIMULACAO") && greenAngels.length > 0 ? (
           <div className="flex items-center gap-3 flex-1">
@@ -742,85 +918,383 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
           </select>
         </div>
       </div>
+      )}
 
-      {!ready && (tab === "EXTRATO" || tab === "SIMULACAO" || tab === "FRANQUIAS") && (
+      {!ready && (tab === "EXTRATO" || tab === "SIMULACAO") && (
         <p className="text-xs text-slate-500">Carregando lançamentos do mês...</p>
       )}
 
-      {/* ------------------------------------------------------ INDICADORES */}
-      {tab === "FRANQUIAS" && settings && ready && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-500">
-            Números de cada franquia em {MESES[month - 1]}/{year}. O que veio da planilha de produtividade já aparece
-            preenchido; complete o que estiver em branco (normalmente TMA, Ciclo e rebate total). O rebate total é a
-            base do variável dos Green Angels.
-          </p>
-          {franchises.length === 0 && (
-            <p className="text-xs text-slate-500">Nenhuma franquia cadastrada ainda.</p>
-          )}
-          {franchises.map((f) => {
-            const d = indDrafts[f.id];
-            if (!d) return null;
-            const faltando: string[] = [];
-            if (d.tmaStone.trim() === "") faltando.push("TMA Stone");
-            if (d.tmaTon.trim() === "") faltando.push("TMA TON");
-            if (toNum(d.rebate) <= 0) faltando.push("Rebate total");
-            if (toNum(d.orders) <= 0) faltando.push("Total de OS");
-            return (
-              <div key={f.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <p className="text-sm font-extrabold text-slate-900">{f.name}</p>
-                    <p className="text-[11px] text-slate-500">{f.cityRegion}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge ok={hit(toNumOrNull(d.tmaStone), settings.tmaStoneTarget, settings.tmaStoneLowerIsBetter)} label="TMA Stone" />
-                    <Badge ok={hit(toNumOrNull(d.tmaTon), settings.tmaTonTarget, settings.tmaTonLowerIsBetter)} label="TMA TON" />
-                    <Badge ok={hit(toNumOrNull(d.ciclo), settings.cicloTarget, settings.cicloLowerIsBetter)} label="Ciclo" />
-                  </div>
+      {/* ----------------------------------------------- FRANQUIAS & REBATE */}
+      {tab === "FRANQUIAS" && settings && (
+        <div className="space-y-4">
+          {/* Cabeçalho + filtro */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-5 h-5" />
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                  {([
-                    ["tmaStone", "TMA Stone"],
-                    ["tmaTon", "TMA TON"],
-                    ["ciclo", "Ciclo"],
-                    ["rebate", "Rebate total (R$)"],
-                    ["orders", "Total de OS"],
-                  ] as const).map(([key, label]) => (
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-base font-black text-slate-900">Franquias & Apuração de Rebate Mensal</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800">
+                      Regra: Rebate Base = Rebate Bruto − {dedPct}% Bônus
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 max-w-2xl">
+                    Lançamento mensal do rebate, do total de Ordens de Serviço (OS) e dos indicadores (TMA e Ciclo) de cada
+                    franquia. Por padrão exibe a competência vigente (mês anterior: {MESES[vigM - 1]}/{vigY}), com filtro
+                    para consulta e edição de meses anteriores.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const base = franqAll ? { y: vigY, m: vigM } : { y: year, m: month };
+                  const primeira = [...franchises].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))[0];
+                  if (primeira) openRebateForm(primeira.id, base.y, base.m, null, false);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> Adicionar Rebate do Mês
+              </button>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5" /> Filtrar Competência:
+                </span>
+                {chipsComp.map((c, idx) => {
+                  const ativo = !franqAll && year === c.y && month === c.m;
+                  return (
+                    <button
+                      key={`${c.y}-${c.m}`}
+                      onClick={() => {
+                        setFranqAll(false);
+                        setYear(c.y);
+                        setMonth(c.m);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border ${
+                        ativo ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {ativo && <Calendar className="w-3.5 h-3.5" />}
+                      {MESES[c.m - 1]}/{c.y}
+                      {idx === 0 ? " (Vigente • Mês Anterior)" : ""}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setFranqAll(true)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border ${
+                    franqAll ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  Todas as Competências
+                </button>
+                <select
+                  aria-label="Mês"
+                  value={month}
+                  onChange={(e) => {
+                    setFranqAll(false);
+                    setMonth(Number(e.target.value));
+                  }}
+                  className={inputCls + " !w-auto"}
+                >
+                  {MESES.map((m, i) => (
+                    <option key={m} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Ano"
+                  value={year}
+                  onChange={(e) => {
+                    setFranqAll(false);
+                    setYear(Number(e.target.value));
+                  }}
+                  className={inputCls + " !w-auto"}
+                >
+                  {years.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="relative lg:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  aria-label="Buscar franquia"
+                  value={franqSearch}
+                  onChange={(e) => setFranqSearch(e.target.value)}
+                  placeholder="Buscar franquia/cidade..."
+                  className={inputCls + " !pl-8"}
+                />
+              </div>
+            </div>
+          </div>
+
+          {!franqDataPronta && <p className="text-xs text-slate-500">Carregando lançamentos...</p>}
+
+          {franqDataPronta && (
+            <>
+              {/* Cartões de resumo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                {kpi(
+                  "Período filtrado",
+                  <Calendar className="w-4 h-4" />,
+                  franqAll ? "Todas as Competências" : `${MESES[month - 1]} / ${year}${ehVigente(year, month) ? " (Vigente)" : ""}`,
+                  `${franqLancadas.length} lançamentos encontrados`
+                )}
+                {kpi("Rebate total (bruto)", <DollarSign className="w-4 h-4" />, brl(kRebate), "Faturamento bruto do período")}
+                {kpi(`Dedução bônus (${dedPct}%)`, <Percent className="w-4 h-4" />, <span className="text-amber-600">- {brl(kDed)}</span>, "Fundo retido p/ metas")}
+                {kpi(`Base final líquida (${100 - dedPct}%)`, <CheckCircle2 className="w-4 h-4" />, brl(kBase), "Base de repasse aos Angels", true)}
+                {kpi(
+                  "Total OS / Média",
+                  <TrendingUp className="w-4 h-4" />,
+                  `${kOs.toLocaleString("pt-BR")} OS`,
+                  `Média: ${kOs > 0 ? brl(kRebate / kOs) : "—"} / OS`
+                )}
+              </div>
+
+              {/* Tabela */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-5">
+                <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-600" /> Detalhamento por Operação & Competência
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Clique em Editar para atualizar rebate, OS e indicadores de qualquer mês.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                    Mostrando {franqRows.length} registros
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] font-extrabold text-slate-400 uppercase border-b border-slate-100">
+                        <th className="py-2.5 pr-3">Franquia</th>
+                        <th className="py-2.5 pr-3">Cidade / UF</th>
+                        <th className="py-2.5 pr-3">Competência</th>
+                        <th className="py-2.5 pr-3">Rebate total (bruto)</th>
+                        <th className="py-2.5 pr-3">Dedução bônus ({dedPct}%)</th>
+                        <th className="py-2.5 px-3 bg-emerald-50 text-emerald-700">Rebate menos bônus (base final)</th>
+                        <th className="py-2.5 px-3 text-right">Total OS mês</th>
+                        <th className="py-2.5 pr-3 text-right">Ticket médio</th>
+                        <th className="py-2.5 pr-3">Indicadores</th>
+                        <th className="py-2.5 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {franqRows.length === 0 && (
+                        <tr>
+                          <td colSpan={10} className="py-6 text-center text-slate-400">Nenhum registro encontrado.</td>
+                        </tr>
+                      )}
+                      {franqRows.map((r) => {
+                        const ind = r.ind;
+                        const rebate = ind?.rebateAmount ?? 0;
+                        const ded = (rebate * dedPct) / 100;
+                        const os = ind?.totalServiceOrders ?? 0;
+                        return (
+                          <tr key={`${r.franchise.id}-${r.year}-${r.month}`} className="border-b border-slate-50 hover:bg-slate-50/60">
+                            <td className="py-3 pr-3">
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-slate-300" />
+                                <span className="font-extrabold text-slate-900">{r.franchise.name}</span>
+                                {!ind ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">NÃO LANÇADO</span>
+                                ) : ehVigente(r.year, r.month) ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">VIGENTE</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3 text-slate-500">{r.franchise.name}/{r.franchise.cityRegion}</td>
+                            <td className="py-3 pr-3">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                                {MESES[r.month - 1]}/{r.year}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-3 font-mono font-bold text-slate-900">{ind ? brl(rebate) : "—"}</td>
+                            <td className="py-3 pr-3 font-mono font-bold text-amber-600">{ind ? `- ${brl(ded)}` : "—"}</td>
+                            <td className="py-3 px-3 font-mono font-extrabold text-emerald-700 bg-emerald-50/60">{ind ? brl(rebate - ded) : "—"}</td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{ind ? `${os.toLocaleString("pt-BR")} OS` : "—"}</td>
+                            <td className="py-3 pr-3 text-right font-mono text-[11px] text-slate-500">{ind && os > 0 && rebate > 0 ? `${brl(rebate / os)}/OS` : "—"}</td>
+                            <td className="py-3 pr-3">
+                              <div className="flex flex-wrap gap-1">
+                                {chipIndicador("Stone", ind?.tmaStoneActual ?? null, settings.tmaStoneTarget, settings.tmaStoneLowerIsBetter)}
+                                {chipIndicador("TON", ind?.tmaTonActual ?? null, settings.tmaTonTarget, settings.tmaTonLowerIsBetter)}
+                                {chipIndicador("Ciclo", ind?.cicloActual ?? null, settings.cicloTarget, settings.cicloLowerIsBetter)}
+                              </div>
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <button
+                                aria-label={`Editar ${r.franchise.name} ${MESES[r.month - 1]}/${r.year}`}
+                                title="Editar"
+                                onClick={() => openRebateForm(r.franchise.id, r.year, r.month, ind, true)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                aria-label={`Excluir ${r.franchise.name} ${MESES[r.month - 1]}/${r.year}`}
+                                title="Excluir"
+                                disabled={!ind}
+                                onClick={() => ind && setConfirmDelete({ ind, nome: `${r.franchise.name} em ${MESES[r.month - 1]}/${r.year}` })}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Pop-up: adicionar / editar */}
+          {rebateForm && (
+            <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4" role="dialog" aria-label="Lançamento de rebate">
+              <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-black text-slate-900">
+                      {rebateForm.existing ? "Editar lançamento" : "Adicionar rebate do mês"}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Rebate, OS e indicadores da franquia no mês. O variável dos Angels é calculado a partir destes números.
+                    </p>
+                  </div>
+                  <button aria-label="Fechar" onClick={() => setRebateForm(null)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="block col-span-3 sm:col-span-1">
+                    <span className="block text-[10px] font-bold text-slate-500 mb-1">Franquia</span>
+                    <select
+                      aria-label="Franquia do lançamento"
+                      disabled={rebateForm.locked}
+                      value={rebateForm.franchiseId}
+                      onChange={(e) => setRebateForm({ ...rebateForm, franchiseId: e.target.value })}
+                      className={inputCls}
+                    >
+                      {[...franchises].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((f) => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-bold text-slate-500 mb-1">Mês</span>
+                    <select
+                      aria-label="Mês do lançamento"
+                      disabled={rebateForm.locked}
+                      value={rebateForm.month}
+                      onChange={(e) => setRebateForm({ ...rebateForm, month: Number(e.target.value) })}
+                      className={inputCls}
+                    >
+                      {MESES.map((m, i) => (
+                        <option key={m} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-bold text-slate-500 mb-1">Ano</span>
+                    <select
+                      aria-label="Ano do lançamento"
+                      disabled={rebateForm.locked}
+                      value={rebateForm.year}
+                      onChange={(e) => setRebateForm({ ...rebateForm, year: Number(e.target.value) })}
+                      className={inputCls}
+                    >
+                      {years.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {rebateForm.existing && !rebateForm.locked && (
+                  <p className="text-[11px] text-amber-700 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Esta franquia já tem lançamento neste mês: os valores abaixo foram carregados e serão substituídos ao salvar.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["rebate", "Rebate total (R$)"],
+                      ["orders", "Total de OS"],
+                      ["tmaStone", "TMA Stone"],
+                      ["tmaTon", "TMA TON"],
+                      ["ciclo", "Ciclo"],
+                    ] as const
+                  ).map(([key, label]) => (
                     <label key={key} className="block">
                       <span className="block text-[10px] font-bold text-slate-500 mb-1">{label}</span>
                       <input
                         inputMode="decimal"
                         className={inputCls}
-                        value={d[key]}
-                        onChange={(e) =>
-                          setIndDrafts((prev) => ({ ...prev, [f.id]: { ...prev[f.id], [key]: e.target.value } }))
-                        }
+                        value={rebateForm[key]}
+                        onChange={(e) => setRebateForm({ ...rebateForm, [key]: e.target.value })}
                       />
                     </label>
                   ))}
+                  <label className="block">
+                    <span className="block text-[10px] font-bold text-slate-500 mb-1">Observações</span>
+                    <input className={inputCls} value={rebateForm.notes} onChange={(e) => setRebateForm({ ...rebateForm, notes: e.target.value })} />
+                  </label>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  Rebate-bônus (rebate total menos {settings.rebateDeductionPct}%):{" "}
-                  <b>{brl(toNum(d.rebate) * (1 - settings.rebateDeductionPct / 100))}</b>
-                </p>
-                {faltando.length > 0 && (
-                  <p className="text-[11px] text-amber-700 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Falta lançar: {faltando.join(", ")}.
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 space-y-0.5">
+                  <p>Dedução do bônus ({dedPct}%): <b>- {brl((toNum(rebateForm.rebate) * dedPct) / 100)}</b></p>
+                  <p>Rebate menos bônus (base final): <b>{brl(toNum(rebateForm.rebate) * (1 - dedPct / 100))}</b></p>
+                  <p>
+                    Ticket médio:{" "}
+                    <b>
+                      {toNum(rebateForm.rebate) > 0 && toNum(rebateForm.orders) > 0
+                        ? `${brl(toNum(rebateForm.rebate) / toNum(rebateForm.orders))}/OS`
+                        : "—"}
+                    </b>
                   </p>
-                )}
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => saveIndicator(f.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-extrabold"
-                  >
-                    <Save className="w-3.5 h-3.5" /> Salvar
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setRebateForm(null)} className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-extrabold text-slate-700">
+                    Cancelar
+                  </button>
+                  <button onClick={saveRebateForm} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold">
+                    <Save className="w-3.5 h-3.5" /> Salvar lançamento
                   </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* Pop-up: confirmar exclusão */}
+          {confirmDelete && (
+            <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4" role="dialog" aria-label="Confirmar exclusão">
+              <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <p className="text-base font-black text-slate-900">Excluir lançamento?</p>
+                <p className="text-xs text-slate-600">
+                  Vai apagar o rebate, as OS e os indicadores de <b>{confirmDelete.nome}</b>. O variável dos Angels dessa
+                  franquia neste mês deixa de ser calculado até você lançar de novo. Remunerações já salvas não são alteradas.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-extrabold text-slate-700">
+                    Cancelar
+                  </button>
+                  <button onClick={deleteRebate} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-extrabold">
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
