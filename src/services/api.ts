@@ -599,6 +599,20 @@ export async function fetchFranchiseIndicators(year: number, month: number): Pro
   return (data ?? []).map(rowToIndicator);
 }
 
+/**
+ * Foto de perfil de cada franquia (id da franquia -> endereço da imagem).
+ * Franquia sem foto simplesmente não aparece no resultado.
+ */
+export async function fetchFranchisePhotos(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from('franchises').select('id,photo_url');
+  if (error) throw error;
+  const out: Record<string, string> = {};
+  (data ?? []).forEach((r: any) => {
+    if (r.photo_url) out[r.id] = r.photo_url;
+  });
+  return out;
+}
+
 /** Todos os meses de todas as franquias (para a visão "Todas as Competências"). */
 export async function fetchAllFranchiseIndicators(): Promise<FranchiseMonthlyIndicator[]> {
   const { data, error } = await supabase.from('franchise_monthly_indicators').select('*');
