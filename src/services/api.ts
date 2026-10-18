@@ -599,6 +599,18 @@ export async function fetchFranchiseIndicators(year: number, month: number): Pro
   return (data ?? []).map(rowToIndicator);
 }
 
+/** Todos os meses de todas as franquias (para a visão "Todas as Competências"). */
+export async function fetchAllFranchiseIndicators(): Promise<FranchiseMonthlyIndicator[]> {
+  const { data, error } = await supabase.from('franchise_monthly_indicators').select('*');
+  if (error) throw error;
+  return (data ?? []).map(rowToIndicator);
+}
+
+export async function deleteFranchiseIndicator(id: string): Promise<void> {
+  const { error } = await supabase.from('franchise_monthly_indicators').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function upsertFranchiseIndicator(ind: FranchiseMonthlyIndicator): Promise<FranchiseMonthlyIndicator> {
   const { data, error } = await supabase
     .from('franchise_monthly_indicators')
