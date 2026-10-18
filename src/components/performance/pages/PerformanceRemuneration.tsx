@@ -218,6 +218,33 @@ const iniciais = (name: string) =>
 const pctStr = (n: number) => String(n).replace(".", ",");
 const metaStr = (n: number) => n.toFixed(2).replace(".", ",");
 
+/** Foto da franquia; sem foto (ou foto que não abre) mostra as iniciais. */
+const FranchiseAvatar: React.FC<{ name: string; url?: string; size?: number }> = ({ name, url, size = 32 }) => {
+  const [quebrada, setQuebrada] = useState(false);
+  useEffect(() => setQuebrada(false), [url]);
+  const dim = { width: size, height: size };
+  if (url && !quebrada) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        style={dim}
+        onError={() => setQuebrada(true)}
+        className="rounded-full object-cover border border-slate-200 bg-white flex-shrink-0"
+      />
+    );
+  }
+  return (
+    <div
+      aria-hidden="true"
+      style={{ ...dim, fontSize: Math.max(8, Math.round(size * 0.34)) }}
+      className="rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center font-black flex-shrink-0"
+    >
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+};
+
 export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = () => {
   const now = new Date();
   // O mês corrente ainda não fechou: a tela abre no mês anterior (competência vigente).
@@ -241,6 +268,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const [confirmNoVar, setConfirmNoVar] = useState<Record<string, boolean>>({});
   const [selectedAngelId, setSelectedAngelId] = useState("");
   const [equipment, setEquipment] = useState<api.AgentEquipment[]>([]);
+  const [franchisePhotos, setFranchisePhotos] = useState<Record<string, string>>({});
   // Em qual mês estão os dados carregados: evita mostrar (ou salvar) números do mês anterior
   const [dataPeriod, setDataPeriod] = useState("");
   const [calcsPeriod, setCalcsPeriod] = useState("");
@@ -289,14 +317,17 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
     if (!isAdmin) return;
     (async () => {
       try {
-        const [f, a, s, l, eq] = await Promise.all([
+        const [f, a, s, l, eq, fotos] = await Promise.all([
           api.fetchFranchises(),
           api.fetchAgents(),
           api.fetchCompensationSettings(),
           api.fetchCamisa10Leads(),
           api.fetchAgentEquipment().catch(() => [] as api.AgentEquipment[]),
+          // se o campo de foto ainda não existir no banco, segue sem fotos (mostra as iniciais)
+          api.fetchFranchisePhotos().catch(() => ({} as Record<string, string>)),
         ]);
         setEquipment(eq);
+        setFranchisePhotos(fotos);
         setFranchises(f);
         setAgents(a);
         setSettings(s);
@@ -783,6 +814,11 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const simResult = settings ? simulateAngelVariable(settings, simInput) : null;
   const setSimField = (patch: Partial<SimDraft>) => setSim((prev) => ({ ...prev, ...patch }));
 
+  const fotoDaFranquia = (nome: string) => {
+    const f = franchises.find((x) => x.name === nome);
+    return f ? franchisePhotos[f.id] : undefined;
+  };
+
   // ---- aba Franquias & Rebate
   const dedPct = settings?.rebateDeductionPct ?? 10;
   const vigY = prevMonthDate.getFullYear();
@@ -1104,7 +1140,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                           <tr key={`${r.franchise.id}-${r.year}-${r.month}`} className="border-b border-slate-50 hover:bg-slate-50/60">
                             <td className="py-3 pr-3">
                               <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-slate-300" />
+                                <FranchiseAvatar name={r.franchise.name} url={franchisePhotos[r.franchise.id]} size={32} />
                                 <span className="font-extrabold text-slate-900">{r.franchise.name}</span>
                                 {!ind ? (
                                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">NÃO LANÇADO</span>
@@ -1165,7 +1201,12 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
             <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-4" role="dialog" aria-label="Lançamento de rebate">
               <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <FranchiseAvatar
+                    name={franchises.find((f) => f.id === rebateForm.franchiseId)?.name ?? "—"}
+                    url={franchisePhotos[rebateForm.franchiseId]}
+                    size={44}
+                  />
+                  <div className="flex-1">
                     <p className="text-base font-black text-slate-900">
                       {rebateForm.existing ? "Editar lançamento" : "Adicionar rebate do mês"}
                     </p>
@@ -1331,7 +1372,8 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                           </a>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <FranchiseAvatar name={selAngel.franchiseName} url={fotoDaFranquia(selAngel.franchiseName)} size={18} />
                         {selAngel.franchiseName} • {selAngel.jobTitle || "Green Angel"}
                       </p>
                       <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
@@ -1571,7 +1613,12 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                             className={`cursor-pointer border-b border-slate-50 hover:bg-slate-50 ${a.id === selAngel.id ? "bg-emerald-50/60" : ""}`}
                           >
                             <td className="py-2 pr-3 font-bold text-slate-800">{a.name}</td>
-                            <td className="py-2 pr-3 text-slate-500">{a.franchiseName}</td>
+                            <td className="py-2 pr-3 text-slate-500">
+                              <span className="inline-flex items-center gap-1.5">
+                                <FranchiseAvatar name={a.franchiseName} url={fotoDaFranquia(a.franchiseName)} size={20} />
+                                {a.franchiseName}
+                              </span>
+                            </td>
                             <td className="py-2 pr-3 text-right font-mono">{c?.angelOs ?? angelInds.find((x) => x.agentId === a.id)?.totalServiceOrders ?? "—"}</td>
                             <td className="py-2 pr-3 text-right font-mono">{ok ? `${pctStr(c?.variablePct ?? 0)}%` : "—"}</td>
                             <td className="py-2 pr-3 text-right font-mono font-bold">{ok ? brl(c?.variableAmount ?? 0) : "—"}</td>
