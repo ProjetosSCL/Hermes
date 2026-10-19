@@ -417,7 +417,7 @@ export const HermesPerformanceModule: React.FC = () => {
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "productiveness", label: "Final da Rota", icon: Trophy },
     { id: "indicators", label: "Indicadores", icon: Target },
-    { id: "history", label: "Histórico 2025/2026", icon: FileSpreadsheet, badge: "Google Sheets" },
+    { id: "history", label: "Histórico 2025/2026", icon: FileSpreadsheet },
     { id: "remuneration", label: "Remuneração Variável", icon: DollarSign },
     { id: "camisa10", label: "Camisa 10", icon: Award },
     { id: "rankings", label: "Rankings", icon: Trophy },
