@@ -599,6 +599,84 @@ export async function fetchFranchiseIndicators(year: number, month: number): Pro
   return (data ?? []).map(rowToIndicator);
 }
 
+// ---------------------------------------------------------------------------
+// Histórico (aba Histórico 2025/2026): leitura completa, só para consulta
+// ---------------------------------------------------------------------------
+export interface FranchiseHistoryRow {
+  franchiseId: string;
+  year: number;
+  month: number;
+  totalServiceOrders: number;
+  osStone: number | null;
+  osTon: number | null;
+  slaStone: number | null;
+  slaTon: number | null;
+  slaBobina: number | null;
+  tmaStone: number | null;
+  tmaTon: number | null;
+  tmaBobina: number | null;
+  ciclo: number | null;
+  rebate: number;
+}
+
+const numN = (v: any): number | null => (v === null || v === undefined ? null : Number(v));
+
+export async function fetchFranchiseHistory(): Promise<FranchiseHistoryRow[]> {
+  const { data, error } = await supabase
+    .from('franchise_monthly_indicators')
+    .select(
+      'franchise_id,year,month,total_service_orders,os_stone,os_ton,sla_stone,sla_ton,sla_bobina,tma_stone_actual,tma_ton_actual,tma_bobina,ciclo_actual,rebate_amount'
+    );
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    franchiseId: r.franchise_id,
+    year: r.year,
+    month: r.month,
+    totalServiceOrders: num(r.total_service_orders),
+    osStone: numN(r.os_stone),
+    osTon: numN(r.os_ton),
+    slaStone: numN(r.sla_stone),
+    slaTon: numN(r.sla_ton),
+    slaBobina: numN(r.sla_bobina),
+    tmaStone: numN(r.tma_stone_actual),
+    tmaTon: numN(r.tma_ton_actual),
+    tmaBobina: numN(r.tma_bobina),
+    ciclo: numN(r.ciclo_actual),
+    rebate: num(r.rebate_amount),
+  }));
+}
+
+export interface AngelHistoryRow {
+  agentId: string;
+  year: number;
+  month: number;
+  totalServiceOrders: number;
+  osStone: number | null;
+  osTon: number | null;
+}
+
+export async function fetchAngelHistory(): Promise<AngelHistoryRow[]> {
+  const { data, error } = await supabase
+    .from('angel_monthly_indicators')
+    .select('agent_id,year,month,total_service_orders,os_stone,os_ton');
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    agentId: r.agent_id,
+    year: r.year,
+    month: r.month,
+    totalServiceOrders: num(r.total_service_orders),
+    osStone: numN(r.os_stone),
+    osTon: numN(r.os_ton),
+  }));
+}
+
+/** Todos os lançamentos de remuneração (só Admin e líder da franquia conseguem ler). */
+export async function fetchAllCompensationRecords(): Promise<AgentCompensationRecord[]> {
+  const { data, error } = await supabase.from('agent_compensation_records').select('*');
+  if (error) throw error;
+  return (data ?? []).map(rowToCompensation);
+}
+
 /**
  * Foto de perfil de cada franquia (id da franquia -> endereço da imagem).
  * Franquia sem foto simplesmente não aparece no resultado.
