@@ -677,6 +677,72 @@ export async function fetchAllCompensationRecords(): Promise<AgentCompensationRe
   return (data ?? []).map(rowToCompensation);
 }
 
+// ---------------------------------------------------------------------------
+// Produção diária (X1 SCL): contagens por dia, franquia e técnico
+// ---------------------------------------------------------------------------
+export interface DailyProductionRow {
+  day: string; // AAAA-MM-DD
+  franchiseId: string;
+  techKey: string;
+  agentId: string | null;
+  technicianName: string;
+  osDone: number;
+  osCancelled: number;
+  osPending: number;
+  osStone: number;
+  osTon: number;
+  byGroup: Record<string, number>;
+}
+
+const rowToDaily = (r: any): DailyProductionRow => ({
+  day: String(r.day).slice(0, 10),
+  franchiseId: r.franchise_id,
+  techKey: r.tech_key,
+  agentId: r.agent_id ?? null,
+  technicianName: r.technician_name,
+  osDone: num(r.os_done),
+  osCancelled: num(r.os_cancelled),
+  osPending: num(r.os_pending),
+  osStone: num(r.os_stone),
+  osTon: num(r.os_ton),
+  byGroup: r.by_group ?? {},
+});
+
+/** Lê a produção diária de um intervalo de datas (o banco devolve no máximo 1.000 linhas por vez, por isso pagina). */
+export async function fetchDailyProduction(from: string, to: string): Promise<DailyProductionRow[]> {
+  const out: DailyProductionRow[] = [];
+  const PAGINA = 1000;
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data, error } = await supabase
+      .from('daily_production')
+      .select('day,franchise_id,tech_key,agent_id,technician_name,os_done,os_cancelled,os_pending,os_stone,os_ton,by_group')
+      .gte('day', from)
+      .lte('day', to)
+      .order('day', { ascending: true })
+      .order('franchise_id', { ascending: true })
+      .order('tech_key', { ascending: true })
+      .range(inicio, inicio + PAGINA - 1);
+    if (error) throw error;
+    out.push(...(data ?? []).map(rowToDaily));
+    if (!data || data.length < PAGINA) break;
+  }
+  return out;
+}
+
+/** Último dia que já tem produção importada (ou null se nunca importou). */
+export async function fetchLatestDailyDay(): Promise<string | null> {
+  const { data, error } = await supabase.from('daily_production').select('day').order('day', { ascending: false }).limit(1);
+  if (error) throw error;
+  return data && data.length > 0 ? String(data[0].day).slice(0, 10) : null;
+}
+
+/** Grava a importação (só Admin): substitui os números do mesmo dia e da mesma franquia. */
+export async function replaceDailyProduction(rows: object[]): Promise<number> {
+  const { data, error } = await supabase.rpc('replace_daily_production', { p_rows: rows });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
 /**
  * Foto de perfil de cada franquia (id da franquia -> endereço da imagem).
  * Franquia sem foto simplesmente não aparece no resultado.
