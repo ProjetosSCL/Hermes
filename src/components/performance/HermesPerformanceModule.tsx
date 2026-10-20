@@ -415,7 +415,6 @@ export const HermesPerformanceModule: React.FC = () => {
   // Sub-navigation Pages definition
   const subPages = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "productiveness", label: "Final da Rota", icon: Trophy },
     { id: "indicators", label: "Indicadores", icon: Target },
     { id: "history", label: "Histórico 2025/2026", icon: FileSpreadsheet },
     { id: "remuneration", label: "Remuneração Variável", icon: DollarSign },
@@ -482,7 +481,7 @@ export const HermesPerformanceModule: React.FC = () => {
               angelSummaries={angelSummaries}
               workfinityList={workfinityList}
               insights={insights}
-              onNavigatePage={(pageId) => setActivePage(pageId)}
+              onNavigatePage={(pageId) => setActivePage(pageId === "productiveness" ? "rankings" : pageId)}
             />
           )}
 
@@ -531,13 +530,7 @@ export const HermesPerformanceModule: React.FC = () => {
             />
           )}
 
-          {activePage === "rankings" && (
-            <PerformanceRankings
-              angelSummaries={angelSummaries}
-              franchisesKPIs={franchisesKPIs}
-              camisa10Leads={camisa10Leads}
-            />
-          )}
+          {activePage === "rankings" && <PerformanceRankings />}
 
           {activePage === "reports" && (
             <PerformanceReports
