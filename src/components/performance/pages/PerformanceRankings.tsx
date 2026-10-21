@@ -103,6 +103,15 @@ export const PerformanceRankings: React.FC = () => {
   const [ano, setAno] = useState(new Date().getFullYear());
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [todosTecnicos, setTodosTecnicos] = useState(false);
+  const [contar, setContar] = useState<{ baixadas: boolean; canceladas: boolean; emTratamento: boolean }>(() => {
+    try {
+      const p = JSON.parse(window.localStorage.getItem("hermes_x1_status") ?? "null");
+      if (p && (p.baixadas || p.canceladas || p.emTratamento)) return { baixadas: !!p.baixadas, canceladas: !!p.canceladas, emTratamento: !!p.emTratamento };
+    } catch {
+      /* sem escolha salva */
+    }
+    return { baixadas: true, canceladas: false, emTratamento: false };
+  });
   const [c10Acumulado, setC10Acumulado] = useState(false);
   const [daily, setDaily] = useState<Record<string, api.DailyProductionRow[]>>({});
   const pedidos = useRef<Set<string>>(new Set());
@@ -302,24 +311,44 @@ export const PerformanceRankings: React.FC = () => {
   );
 
   // ---------------------------------------------------------------- X1 SCL (dia)
+  const osContadas = (r: api.DailyProductionRow) =>
+    (contar.baixadas ? r.osDone : 0) + (contar.canceladas ? r.osCancelled : 0) + (contar.emTratamento ? r.osPending : 0);
+  const soBaixadas = contar.baixadas && !contar.canceladas && !contar.emTratamento;
+  const descStatus = [contar.baixadas && "baixados", contar.canceladas && "cancelados", contar.emTratamento && "em tratamento"].filter(Boolean).join(" + ");
+  const alternarStatus = (k: "baixadas" | "canceladas" | "emTratamento") => {
+    const prox = { ...contar, [k]: !contar[k] };
+    if (!prox.baixadas && !prox.canceladas && !prox.emTratamento) {
+      showToast("err", "Mantenha pelo menos um status marcado.");
+      return;
+    }
+    setContar(prox);
+    try {
+      window.localStorage.setItem("hermes_x1_status", JSON.stringify(prox));
+    } catch {
+      /* sem armazenamento: vale só nesta tela */
+    }
+  };
   const rowsMes = daily[day.slice(0, 7)] ?? null;
   const rowsDia = (rowsMes ?? []).filter((r) => r.day === day);
   const rowsAteDia = (rowsMes ?? []).filter((r) => r.day <= day);
-  const totalDia = sum(rowsDia, (r) => r.osDone);
+  const totalDia = sum(rowsDia, osContadas);
+  const qtdBaixadasDia = sum(rowsDia, (r) => r.osDone);
+  const qtdCanceladasDia = sum(rowsDia, (r) => r.osCancelled);
+  const qtdTratamentoDia = sum(rowsDia, (r) => r.osPending);
   const frRank = franquiasOrdenadas
     .map((f) => ({
       f,
-      os: sum(rowsDia.filter((r) => r.franchiseId === f.id), (r) => r.osDone),
-      acum: sum(rowsAteDia.filter((r) => r.franchiseId === f.id), (r) => r.osDone),
+      os: sum(rowsDia.filter((r) => r.franchiseId === f.id), osContadas),
+      acum: sum(rowsAteDia.filter((r) => r.franchiseId === f.id), osContadas),
     }))
     .sort((a, b) => b.os - a.os || a.f.name.localeCompare(b.f.name, "pt-BR"));
   const maxFr = Math.max(1, ...frRank.map((x) => x.os));
   const osDiaPorAgente = new Map<string, number>();
   rowsDia.forEach((r) => {
-    if (r.agentId) osDiaPorAgente.set(r.agentId, (osDiaPorAgente.get(r.agentId) ?? 0) + r.osDone);
+    if (r.agentId) osDiaPorAgente.set(r.agentId, (osDiaPorAgente.get(r.agentId) ?? 0) + osContadas(r));
   });
-  const diasTrabalhados = (id: string) => new Set(rowsAteDia.filter((r) => r.agentId === id && r.osDone > 0).map((r) => r.day)).size;
-  const somaAteDia = (id: string) => sum(rowsAteDia.filter((r) => r.agentId === id), (r) => r.osDone);
+  const diasTrabalhados = (id: string) => new Set(rowsAteDia.filter((r) => r.agentId === id && osContadas(r) > 0).map((r) => r.day)).size;
+  const somaAteDia = (id: string) => sum(rowsAteDia.filter((r) => r.agentId === id), osContadas);
   const angelRank = [...osDiaPorAgente.entries()]
     .map(([id, os]) => {
       const a = agentePorId.get(id);
@@ -328,7 +357,7 @@ export const PerformanceRankings: React.FC = () => {
     })
     .filter((x): x is { a: UserAgent; os: number; dias: number; media: number | null } => !!x.a && x.os > 0 && (todosTecnicos || ehAngel(x.a)))
     .sort((x, y) => y.os - x.os || x.a.name.localeCompare(y.a.name, "pt-BR"));
-  const osForaDoCadastro = sum(rowsDia.filter((r) => !r.agentId), (r) => r.osDone);
+  const osForaDoCadastro = sum(rowsDia.filter((r) => !r.agentId), osContadas);
   const campeaFr = frRank[0] && frRank[0].os > 0 ? frRank[0] : null;
   const campeao = angelRank[0] ?? null;
   const xMedia = campeao && campeao.media && campeao.dias >= 2 ? (campeao.os / campeao.media - 1) * 100 : null;
@@ -336,7 +365,9 @@ export const PerformanceRankings: React.FC = () => {
   const medalha = ["🥇", "🥈", "🥉"];
   const comunicado = (() => {
     if (totalDia === 0) return "";
-    const linhas: string[] = [`🏆 *X1 SCL — ${rotuloDia(day)}*`, `Total atendido no dia: ${inteiro(totalDia)} OS`, ""];
+    const linhas: string[] = [`🏆 *X1 SCL — ${rotuloDia(day)}*`, `Total atendido no dia: ${inteiro(totalDia)} OS`];
+    if (!soBaixadas) linhas.push(`Contagem: ${descStatus}`);
+    linhas.push("");
     if (campeaFr) linhas.push(`🥇 *Franquia campeã do dia:* ${campeaFr.f.name} — ${campeaFr.os} OS`);
     if (campeao) linhas.push(`🏅 *Angel campeão:* ${campeao.a.name} (${campeao.a.franchiseName}) — ${campeao.os} OS`);
     linhas.push("", "*Ranking das franquias*");
@@ -472,14 +503,38 @@ export const PerformanceRankings: React.FC = () => {
             </div>
           </div>
 
+          {rowsMes !== null && (qtdBaixadasDia + qtdCanceladasDia + qtdTratamentoDia) > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 flex items-center gap-x-5 gap-y-2 flex-wrap">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase">Contar no X1:</span>
+              {(
+                [
+                  ["baixadas", "Baixadas", qtdBaixadasDia, "Contar OS baixadas"],
+                  ["canceladas", "Canceladas", qtdCanceladasDia, "Contar OS canceladas"],
+                  ["emTratamento", "Em tratamento", qtdTratamentoDia, "Contar OS em tratamento"],
+                ] as const
+              ).map(([k, rotulo, qtd, aria]) => (
+                <label key={k} className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input type="checkbox" aria-label={aria} checked={contar[k]} onChange={() => alternarStatus(k)} />
+                  {rotulo} <span className="font-mono text-[11px] text-slate-400">({inteiro(qtd)})</span>
+                </label>
+              ))}
+            </div>
+          )}
+
           {rowsMes === null && <p className="text-xs text-slate-500">Carregando produção do dia...</p>}
 
           {rowsMes !== null && totalDia === 0 && (
             <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
-              <p className="text-sm font-extrabold text-slate-800">Nenhum atendimento importado para {rotuloDia(day)}.</p>
-              <p className="text-xs text-slate-500 mt-1">
-                {isAdmin ? "Use “Importar Workfinity Diário” com o relatório do dia (.csv)." : "O relatório do dia ainda não foi importado."}
-              </p>
+              {qtdBaixadasDia + qtdCanceladasDia + qtdTratamentoDia > 0 ? (
+                <p className="text-sm font-extrabold text-slate-800">Nenhuma OS com os status escolhidos em {rotuloDia(day)}.</p>
+              ) : (
+                <>
+                  <p className="text-sm font-extrabold text-slate-800">Nenhum atendimento importado para {rotuloDia(day)}.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isAdmin ? "Use “Importar Workfinity Diário” com o relatório do dia (.csv)." : "O relatório do dia ainda não foi importado."}
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -488,11 +543,11 @@ export const PerformanceRankings: React.FC = () => {
               <div className="bg-slate-900 rounded-2xl px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
                 <p className="text-[11px] text-slate-300 flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <b className="text-white">Filtro de Atendimento Ativo:</b> exibindo apenas chamados baixados com Data de Atendimento em{" "}
+                  <b className="text-white">Filtro de Atendimento Ativo:</b> exibindo {soBaixadas ? "apenas " : ""}chamados {descStatus} com Data de Atendimento em{" "}
                   <b className="text-emerald-300">{rotuloDia(day)}</b>.
                 </p>
                 <span className="text-[11px] font-extrabold text-emerald-300 border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 rounded-full">
-                  Total atendido na data: {inteiro(totalDia)} OS
+                  {soBaixadas ? "Total atendido na data" : `Total na data (${descStatus})`}: {inteiro(totalDia)} OS
                 </span>
               </div>
 
@@ -625,7 +680,7 @@ export const PerformanceRankings: React.FC = () => {
                   </div>
                   {osForaDoCadastro > 0 && (
                     <p className="text-[10px] text-slate-500 mt-3">
-                      {osForaDoCadastro} OS do dia são de técnicos fora do cadastro: contam para a franquia, mas não aparecem neste ranking.
+                      {osForaDoCadastro} OS do dia são de técnicos fora do cadastro ou sem técnico: contam para a franquia, mas não aparecem neste ranking.
                     </p>
                   )}
                 </div>
