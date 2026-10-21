@@ -10,6 +10,11 @@ import { Franchise, UserAgent } from "../../../types";
  * um valor, use Remuneração Variável → Franquias & Rebate (um único lugar de lançamento).
  */
 
+/** O cadastro às vezes guarda "RN - JOÃO CÂMARA" no campo da UF: aqui sempre sai só "RN". */
+const ufDe = (regiao?: string): string => {
+  const m = /^\s*([A-Za-z]{2})(?=\s*[-–/]|\s*$)/.exec(regiao ?? "");
+  return m ? m[1].toUpperCase() : regiao ?? "";
+};
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const MES_ABR = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const PALETA = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6"];
@@ -478,7 +483,7 @@ export const PerformanceHistory2025: React.FC = () => {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-extrabold text-slate-900 truncate">{a.name}</p>
-                      <p className="text-[10px] text-slate-500">{franchise.cityRegion} · {franchise.name}</p>
+                      <p className="text-[10px] text-slate-500">{ufDe(franchise.cityRegion)} · {franchise.name}</p>
                       <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
                         <Shirt className="w-3 h-3" /> {epis}
                       </p>
