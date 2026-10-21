@@ -15,6 +15,11 @@ import { buildDailyRecords, decodeWorkfinityBytes, parseWorkfinity, rotuloDia, D
 
 type Tab = "X1" | "ANGELS" | "FRANQUIAS" | "CAMISA10";
 
+/** O cadastro às vezes guarda "RN - JOÃO CÂMARA" no campo da UF: aqui sempre sai só "RN". */
+const ufDe = (regiao?: string): string => {
+  const m = /^\s*([A-Za-z]{2})(?=\s*[-–/]|\s*$)/.exec(regiao ?? "");
+  return m ? m[1].toUpperCase() : regiao ?? "";
+};
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const pad = (n: number) => String(n).padStart(2, "0");
 const chaveMes = (ano: number, mes: number) => `${ano}-${pad(mes)}`;
@@ -554,12 +559,12 @@ export const PerformanceRankings: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5">
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full uppercase">
-                    <Trophy className="w-3 h-3" /> Franquia campeã do dia ({day})
+                    <Trophy className="w-3 h-3" /> Franquia campeã do dia ({rotuloDia(day)})
                   </span>
                   {campeaFr && (
                     <>
                       <p className="mt-3 text-xl font-black text-slate-900">Franquia {campeaFr.f.name}</p>
-                      <p className="text-[11px] text-slate-500">{campeaFr.f.name}/{campeaFr.f.cityRegion}</p>
+                      <p className="text-[11px] text-slate-500">{campeaFr.f.name}/{ufDe(campeaFr.f.cityRegion)}</p>
                       <div className="mt-4 pt-3 border-t border-amber-100 grid grid-cols-2 gap-3">
                         <div>
                           <p className="text-[10px] font-bold text-slate-500">OS atendidas na data</p>
@@ -576,7 +581,7 @@ export const PerformanceRankings: React.FC = () => {
 
                 <div className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5">
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full uppercase">
-                    <Award className="w-3 h-3" /> Angel campeão de produção ({day})
+                    <Award className="w-3 h-3" /> Angel campeão de produção ({rotuloDia(day)})
                   </span>
                   {campeao ? (
                     <>
@@ -612,7 +617,7 @@ export const PerformanceRankings: React.FC = () => {
                 <div className="bg-white border border-slate-200 rounded-3xl p-5">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
-                      <p className="text-sm font-extrabold text-slate-900 flex items-center gap-2"><Trophy className="w-4 h-4 text-amber-500" /> Ranking das Franquias ({day})</p>
+                      <p className="text-sm font-extrabold text-slate-900 flex items-center gap-2"><Trophy className="w-4 h-4 text-amber-500" /> Ranking das Franquias ({rotuloDia(day)})</p>
                       <p className="text-[11px] text-slate-500">Classificação baseada nos atendimentos realizados na data informada</p>
                     </div>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 whitespace-nowrap">{frRank.length} Franquias</span>
@@ -628,7 +633,7 @@ export const PerformanceRankings: React.FC = () => {
                           <FranchiseAvatar name={x.f.name} url={photos[x.f.id]} size={28} />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-extrabold text-slate-900">Franquia {x.f.name}</p>
-                            <p className="text-[10px] text-slate-500">{x.f.name}/{x.f.cityRegion}</p>
+                            <p className="text-[10px] text-slate-500">{x.f.name}/{ufDe(x.f.cityRegion)}</p>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-black text-amber-800">{x.os} OS do Dia</p>
@@ -646,7 +651,7 @@ export const PerformanceRankings: React.FC = () => {
                 <div className="bg-white border border-slate-200 rounded-3xl p-5">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
-                      <p className="text-sm font-extrabold text-slate-900 flex items-center gap-2"><Users className="w-4 h-4 text-emerald-600" /> Ranking dos Angels ({day})</p>
+                      <p className="text-sm font-extrabold text-slate-900 flex items-center gap-2"><Users className="w-4 h-4 text-emerald-600" /> Ranking dos Angels ({rotuloDia(day)})</p>
                       <p className="text-[11px] text-slate-500">Atendimentos concluídos na data e média diária real</p>
                     </div>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 whitespace-nowrap">{angelRank.length} {todosTecnicos ? "técnicos" : "Angels"} ativos</span>
@@ -799,7 +804,7 @@ export const PerformanceRankings: React.FC = () => {
                             {x.f.name}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-slate-500">{x.f.name}/{x.f.cityRegion}</td>
+                        <td className="py-3 px-3 text-slate-500">{x.f.name}/{ufDe(x.f.cityRegion)}</td>
                         <td className="py-3 px-3 font-mono font-bold text-slate-900">
                           {x.total > 0 ? `${inteiro(x.total)} OS` : "—"}
                           {x.total > 0 && !x.oficial && <span className="ml-1 text-[9px] font-bold text-slate-400">(importado)</span>}
