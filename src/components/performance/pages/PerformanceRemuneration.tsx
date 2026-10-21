@@ -50,6 +50,11 @@ interface PerformanceRemunerationProps {
 
 type Tab = "EXTRATO" | "SIMULACAO" | "FRANQUIAS" | "CAMISA10" | "REGRAS";
 
+/** O cadastro às vezes guarda "RN - JOÃO CÂMARA" no campo da UF: aqui sempre sai só "RN". */
+const ufDe = (regiao?: string): string => {
+  const m = /^\s*([A-Za-z]{2})(?=\s*[-–/]|\s*$)/.exec(regiao ?? "");
+  return m ? m[1].toUpperCase() : regiao ?? "";
+};
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
@@ -1149,7 +1154,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                                 ) : null}
                               </div>
                             </td>
-                            <td className="py-3 pr-3 text-slate-500">{r.franchise.name}/{r.franchise.cityRegion}</td>
+                            <td className="py-3 pr-3 text-slate-500">{r.franchise.name}/{ufDe(r.franchise.cityRegion)}</td>
                             <td className="py-3 pr-3">
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
                                 {MESES[r.month - 1]}/{r.year}
