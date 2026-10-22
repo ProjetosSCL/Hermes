@@ -67,15 +67,15 @@ const PersonAvatar: React.FC<{ name: string; url?: string; size?: number }> = ({
   );
 };
 
-const FranchiseAvatar: React.FC<{ name: string; url?: string; size?: number }> = ({ name, url, size = 28 }) => {
+const FranchiseAvatar: React.FC<{ name: string; url?: string; size?: number; borda?: string }> = ({ name, url, size = 28, borda = "border border-slate-200" }) => {
   const [quebrada, setQuebrada] = useState(false);
   useEffect(() => setQuebrada(false), [url]);
   const dim = { width: size, height: size };
   if (url && !quebrada) {
-    return <img src={url} alt={name} style={dim} onError={() => setQuebrada(true)} className="rounded-full object-cover border border-slate-200 bg-white flex-shrink-0" />;
+    return <img src={url} alt={name} style={dim} onError={() => setQuebrada(true)} className={`rounded-full object-cover ${borda} bg-white flex-shrink-0`} />;
   }
   return (
-    <div aria-hidden="true" style={{ ...dim, fontSize: Math.max(8, Math.round(size * 0.34)) }} className="rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center font-black flex-shrink-0">
+    <div aria-hidden="true" style={{ ...dim, fontSize: Math.max(8, Math.round(size * 0.34)) }} className={`rounded-full ${borda === "border border-slate-200" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : `bg-amber-100 text-amber-800 ${borda}`} flex items-center justify-center font-black flex-shrink-0`}>
       {name.slice(0, 2).toUpperCase()}
     </div>
   );
@@ -563,8 +563,13 @@ export const PerformanceRankings: React.FC = () => {
                   </span>
                   {campeaFr && (
                     <>
-                      <p className="mt-3 text-xl font-black text-slate-900">Franquia {campeaFr.f.name}</p>
-                      <p className="text-[11px] text-slate-500">{campeaFr.f.name}/{ufDe(campeaFr.f.cityRegion)}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <FranchiseAvatar name={campeaFr.f.name} url={photos[campeaFr.f.id]} size={52} borda="border-2 border-amber-300" />
+                        <div>
+                          <p className="text-xl font-black text-slate-900">Franquia {campeaFr.f.name}</p>
+                          <p className="text-[11px] text-slate-500">{campeaFr.f.name}/{ufDe(campeaFr.f.cityRegion)}</p>
+                        </div>
+                      </div>
                       <div className="mt-4 pt-3 border-t border-amber-100 grid grid-cols-2 gap-3">
                         <div>
                           <p className="text-[10px] font-bold text-slate-500">OS atendidas na data</p>
