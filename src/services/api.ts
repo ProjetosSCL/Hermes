@@ -932,6 +932,17 @@ export async function fetchAgentEquipment(): Promise<AgentEquipment[]> {
   }));
 }
 
+/** Quem faz logística reversa (id da pessoa -> sim/não). Define quanto cada Angel herda dos indicadores da franquia. */
+export async function fetchReverseFlags(): Promise<Record<string, boolean>> {
+  const { data, error } = await supabase.from('profiles').select('id,does_reverse_logistics');
+  if (error) throw error;
+  const out: Record<string, boolean> = {};
+  (data ?? []).forEach((r: any) => {
+    out[r.id] = !!r.does_reverse_logistics;
+  });
+  return out;
+}
+
 /** Marca se o Angel faz logística reversa (só Admin consegue; o banco confere). */
 export async function setReverseLogistics(agentId: string, value: boolean): Promise<void> {
   const { error } = await supabase.from('profiles').update({ does_reverse_logistics: value }).eq('id', agentId);
