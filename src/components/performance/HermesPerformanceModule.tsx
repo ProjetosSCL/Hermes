@@ -498,13 +498,7 @@ export const HermesPerformanceModule: React.FC = () => {
             />
           )}
 
-          {activePage === "indicators" && (
-            <PerformanceIndicators
-              franchisesKPIs={franchisesKPIs}
-              angelSummaries={angelSummaries}
-              onUpdateFranchiseKPI={handleUpdateFranchiseKPI}
-            />
-          )}
+          {activePage === "indicators" && <PerformanceIndicators onEditar={() => setActivePage("remuneration")} />}
 
           {activePage === "history" && <PerformanceHistory2025 />}
 
