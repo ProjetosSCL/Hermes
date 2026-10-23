@@ -1,0 +1,31 @@
+/* Stone Design System, Etapa 2: troca a paleta "emerald" e "slate" e a fonte do sistema inteiro.
+   Para desfazer, basta comentar de novo a linha que importa este arquivo no index.css. */
+@theme {
+  --font-sans: "Roobert", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  /* Verdes (emerald -> verdes da marca Stone) */
+  --color-emerald-50: #F2FFF4;
+  --color-emerald-100: #DDFFE3;
+  --color-emerald-200: #B4F5C2;
+  --color-emerald-300: #6EE88C;
+  --color-emerald-400: #00D700;
+  --color-emerald-500: #00A800;
+  --color-emerald-600: #007D00;
+  --color-emerald-700: #006419;
+  --color-emerald-800: #00461E;
+  --color-emerald-900: #003317;
+  --color-emerald-950: #00240F;
+
+  /* Neutros (slate -> cinzas esverdeados da marca) */
+  --color-slate-50: #F4F7F4;
+  --color-slate-100: #ECF1EB;
+  --color-slate-200: #DDE5DC;
+  --color-slate-300: #C8D2C8;
+  --color-slate-400: #96A096;
+  --color-slate-500: #647064;
+  --color-slate-600: #505A50;
+  --color-slate-700: #3C463C;
+  --color-slate-800: #2B332B;
+  --color-slate-900: #1E281E;
+  --color-slate-950: #141B14;
+}
