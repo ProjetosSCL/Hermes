@@ -1,708 +1,363 @@
-import React, { useState } from "react";
-import { FranchiseKPI, AngelPerformanceSummary } from "../../../types/performance";
-import {
-  Target,
-  CheckCircle2,
-  XCircle,
-  Building2,
-  Edit2,
-  Save,
-  Clock,
-  ShieldAlert,
-  Users,
-  Calendar,
-  Filter,
-  Search,
-  Check,
-  Award,
-  Sparkles,
-  Info,
-  ChevronDown,
-  TrendingUp,
-  AlertTriangle,
-  RotateCcw,
-} from "lucide-react";
-import { driveToDirectUrl } from "../../../utils/angelRegistrationHelper";
+import React, { useEffect, useState } from "react";
+import { Target, Calendar, CheckCircle2, XCircle, Clock, Filter, Search, Pencil, Building2 } from "lucide-react";
+import * as api from "../../../services/api";
+import { supabase } from "../../../services/supabaseClient";
+import { Franchise, UserAgent } from "../../../types";
 
-interface PerformanceIndicatorsProps {
-  franchisesKPIs: FranchiseKPI[];
-  angelSummaries?: AngelPerformanceSummary[];
-  onUpdateFranchiseKPI: (updated: FranchiseKPI) => void;
-}
+/**
+ * Indicadores de Performance das Franquias (mês fechado).
+ * TMA Stone, TMA TON e Ciclo de cada franquia são herdados por todos os Angels dela no cálculo da
+ * remuneração variável. Esta tela só consulta: os números são lançados em
+ * Remuneração Variável → Franquias & Rebate (um único lugar de lançamento).
+ */
 
-export const PerformanceIndicators: React.FC<PerformanceIndicatorsProps> = ({
-  franchisesKPIs,
-  angelSummaries = [],
-  onUpdateFranchiseKPI,
-}) => {
-  // Reference Period - defaults to previous month "Julho 2026"
-  const [selectedMonth, setSelectedMonth] = useState<string>("Julho");
-  const [selectedYear, setSelectedYear] = useState<string>("2026");
-  const [statusFilter, setStatusFilter] = useState<"TODAS" | "CONFORME" | "RESSALVA">("TODAS");
-  const [searchTerm, setSearchTerm] = useState<string>("");
+/** O cadastro às vezes guarda "RN - JOÃO CÂMARA" no campo da UF: aqui sempre sai só "RN". */
+const ufDe = (regiao?: string): string => {
+  const m = /^\s*([A-Za-z]{2})(?=\s*[-–/]|\s*$)/.exec(regiao ?? "");
+  return m ? m[1].toUpperCase() : regiao ?? "";
+};
 
-  // Editing state
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<FranchiseKPI | null>(null);
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const dec = (v: number, casas: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+const horas = (v: number | null) => (v === null ? "—" : dec(v, 2));
+const inteiro = (v: number) => v.toLocaleString("pt-BR");
+const bate = (v: number | null, meta: number, menorMelhor: boolean): boolean | null => (v === null ? null : menorMelhor ? v <= meta : v >= meta);
+const ehAngel = (a: UserAgent) => (a.jobTitle || "").toLowerCase().includes("angel");
+const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  const referenceMonthLabel = `${selectedMonth} de ${selectedYear}`;
-  const isPreviousMonthStandard = selectedMonth === "Julho" && selectedYear === "2026";
+type Situacao = "CONFORME" | "RESSALVA" | "PENDENTE";
+type Filtro = "TODAS" | Situacao;
 
-  const handleStartEdit = (f: FranchiseKPI) => {
-    setEditingId(f.franchiseId);
-    setEditForm({ ...f });
-  };
+const PersonAvatar: React.FC<{ name: string; url?: string; size?: number }> = ({ name, url, size = 18 }) => {
+  const [quebrada, setQuebrada] = useState(false);
+  useEffect(() => setQuebrada(false), [url]);
+  const dim = { width: size, height: size };
+  if (url && !quebrada) return <img src={url} alt={name} style={dim} onError={() => setQuebrada(true)} className="rounded-full object-cover border border-emerald-300 bg-white flex-shrink-0" />;
+  return (
+    <div aria-hidden="true" style={{ ...dim, fontSize: Math.max(7, Math.round(size * 0.4)) }} className="rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center font-black flex-shrink-0">
+      {name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase()}
+    </div>
+  );
+};
 
-  const handleSaveEdit = () => {
-    if (editForm) {
-      onUpdateFranchiseKPI(editForm);
-      setEditingId(null);
-      setEditForm(null);
-    }
-  };
+const FranchiseAvatar: React.FC<{ name: string; url?: string; size?: number }> = ({ name, url, size = 28 }) => {
+  const [quebrada, setQuebrada] = useState(false);
+  useEffect(() => setQuebrada(false), [url]);
+  const dim = { width: size, height: size };
+  if (url && !quebrada) return <img src={url} alt={name} style={dim} onError={() => setQuebrada(true)} className="rounded-full object-cover border border-slate-200 bg-white flex-shrink-0" />;
+  return (
+    <div aria-hidden="true" style={{ ...dim, fontSize: Math.max(8, Math.round(size * 0.34)) }} className="rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center font-black flex-shrink-0">
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+};
 
-  // Filter franchises
-  const filteredFranchises = franchisesKPIs.filter((f) => {
-    const isEditing = editingId === f.franchiseId && editForm;
-    const kpi = isEditing ? editForm : f;
+export const PerformanceIndicators: React.FC<{ onEditar?: () => void }> = ({ onEditar }) => {
+  const agora = new Date();
+  const mesAnterior = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
+  const [agents, setAgents] = useState<UserAgent[]>([]);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<api.FranchiseHistoryRow[]>([]);
+  const [settings, setSettings] = useState<api.CompensationSettings | null>(null);
+  const [reversa, setReversa] = useState<Record<string, boolean> | null>(null);
+  const [ano, setAno] = useState(mesAnterior.getFullYear());
+  const [mes, setMes] = useState(mesAnterior.getMonth() + 1);
+  const [filtro, setFiltro] = useState<Filtro>("TODAS");
+  const [busca, setBusca] = useState("");
 
-    const stoneMet = kpi.TMAStone <= kpi.TMAStoneTarget;
-    const tonMet = kpi.TMATon <= kpi.TMATonTarget;
-    const cicloMet = kpi.Ciclo <= kpi.CicloTarget;
-    const allMet = stoneMet && tonMet && cicloMet;
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        let admin = false;
+        const { data } = await supabase.auth.getUser();
+        if (data.user) {
+          try {
+            admin = (await api.fetchMyProfile(data.user.id)).role === "ADMIN";
+          } catch {
+            admin = false;
+          }
+        }
+        const [f, a, ph, hist, st, rev] = await Promise.all([
+          api.fetchFranchises(),
+          api.fetchAgents(),
+          api.fetchFranchisePhotos().catch(() => ({} as Record<string, string>)),
+          api.fetchFranchiseHistory(),
+          api.fetchCompensationSettings(),
+          api.fetchReverseFlags().catch(() => null as Record<string, boolean> | null),
+        ]);
+        if (cancelado) return;
+        setIsAdmin(admin);
+        setFranchises(f);
+        setAgents(a);
+        setPhotos(ph);
+        setRows(hist);
+        setSettings(st);
+        setReversa(rev);
+      } catch (e) {
+        console.error(e);
+        if (!cancelado) setErro("Não foi possível carregar os indicadores.");
+      } finally {
+        if (!cancelado) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
-    if (statusFilter === "CONFORME" && !allMet) return false;
-    if (statusFilter === "RESSALVA" && allMet) return false;
+  if (loading) return <p className="text-xs text-slate-500">Carregando indicadores...</p>;
+  if (erro || !settings) return <p className="text-xs text-red-600">{erro ?? "Não foi possível carregar as regras e metas."}</p>;
 
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      const matchName = f.franchiseName.toLowerCase().includes(term);
-      const matchCity = f.city.toLowerCase().includes(term);
-      if (!matchName && !matchCity) return false;
-    }
+  const s = settings;
+  const anos = [agora.getFullYear() - 1, agora.getFullYear(), agora.getFullYear() + 1];
+  const ehMesAnterior = ano === mesAnterior.getFullYear() && mes === mesAnterior.getMonth() + 1;
+  const periodo = `${MESES[mes - 1]} de ${ano}`;
+  const franquias = [...franchises].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const metaTxt = `≤${dec(s.tmaStoneTarget, 2)}h | ≤${dec(s.tmaTonTarget, 2)}h | ≤${dec(s.cicloTarget, 2)}h`;
 
-    return true;
+  // percentual que cada Angel herda: mesma regra do cálculo oficial (calculate_angel_variable_pct)
+  const pctAngel = (h: { s: boolean | null; t: boolean | null; c: boolean | null }, faz: boolean) =>
+    faz
+      ? (h.s ? s.pctTmaStoneReversa : 0) + (h.t ? s.pctTmaTonReversa : 0) + (h.c ? s.pctCicloReversa : 0)
+      : (h.s ? s.pctTmaStoneNormal : 0) + (h.t ? s.pctTmaTonNormal : 0);
+  const maxAngel = (faz: boolean) => (faz ? s.pctTmaStoneReversa + s.pctTmaTonReversa + s.pctCicloReversa : s.pctTmaStoneNormal + s.pctTmaTonNormal);
+
+  const cartoes = franquias.map((f) => {
+    const ind = rows.find((r) => r.franchiseId === f.id && r.year === ano && r.month === mes) ?? null;
+    const angels = agents.filter((a) => a.franchiseName === f.name && ehAngel(a)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    const precisaCiclo = reversa ? angels.some((a) => reversa[a.id]) : true;
+    const h = {
+      s: ind ? bate(ind.tmaStone, s.tmaStoneTarget, s.tmaStoneLowerIsBetter) : null,
+      t: ind ? bate(ind.tmaTon, s.tmaTonTarget, s.tmaTonLowerIsBetter) : null,
+      c: ind ? bate(ind.ciclo, s.cicloTarget, s.cicloLowerIsBetter) : null,
+    };
+    const aplicaveis = [h.s, h.t, ...(precisaCiclo || h.c !== null ? [h.c] : [])];
+    const faltando = !ind || h.s === null || h.t === null || (precisaCiclo && h.c === null);
+    const situacao: Situacao = faltando ? "PENDENTE" : aplicaveis.every((x) => x === true) ? "CONFORME" : "RESSALVA";
+    return { f, ind, angels, precisaCiclo, h, situacao, atingidas: aplicaveis.filter((x) => x === true).length, total: aplicaveis.length };
   });
 
-  // Calculate network-wide aggregates for this reference month
-  const totalCount = franchisesKPIs.length;
-  const conformingCount = franchisesKPIs.filter(
-    (f) =>
-      (f.TMAStone ?? 999) <= (f.TMAStoneTarget ?? 0.9) &&
-      (f.TMATon ?? 999) <= (f.TMATonTarget ?? 2.5) &&
-      (f.Ciclo ?? 999) <= (f.CicloTarget ?? 0.9)
-  ).length;
-  const ressalvaCount = totalCount - conformingCount;
-  const conformingPct = totalCount > 0 ? ((conformingCount / totalCount) * 100).toFixed(0) : "0";
+  const nConformes = cartoes.filter((c) => c.situacao === "CONFORME").length;
+  const nRessalva = cartoes.filter((c) => c.situacao === "RESSALVA").length;
+  const nPendentes = cartoes.filter((c) => c.situacao === "PENDENTE").length;
+  const mediaDe = (xs: (number | null)[]) => {
+    const ok = xs.filter((x): x is number => x !== null);
+    return ok.length ? ok.reduce((a, b) => a + b, 0) / ok.length : null;
+  };
+  const mStone = mediaDe(cartoes.map((c) => c.ind?.tmaStone ?? null));
+  const mTon = mediaDe(cartoes.map((c) => c.ind?.tmaTon ?? null));
+  const mCiclo = mediaDe(cartoes.map((c) => c.ind?.ciclo ?? null));
+  const buscaN = semAcento(busca.trim());
+  const visiveis = cartoes
+    .filter((c) => filtro === "TODAS" || c.situacao === filtro)
+    .filter((c) => !buscaN || semAcento(`${c.f.name} ${c.f.cityRegion}`).includes(buscaN));
 
-  const avgStone =
-    totalCount > 0
-      ? (franchisesKPIs.reduce((acc, f) => acc + (f.TMAStone || 0), 0) / totalCount).toFixed(2)
-      : "0.00";
-  const avgTon =
-    totalCount > 0
-      ? (franchisesKPIs.reduce((acc, f) => acc + (f.TMATon || 0), 0) / totalCount).toFixed(2)
-      : "0.00";
-  const avgCiclo =
-    totalCount > 0
-      ? (franchisesKPIs.reduce((acc, f) => acc + (f.Ciclo || 0), 0) / totalCount).toFixed(2)
-      : "0.00";
+  const corMedia = (v: number | null, meta: number, menor: boolean) => (v === null ? "text-slate-500" : bate(v, meta, menor) ? "text-emerald-600" : "text-red-600");
+
+  const caixa = (rotulo: string, meta: number, menor: boolean, valor: number | null, ok: boolean | null, nota: string, naoSeAplica = false) => (
+    <div className={`rounded-xl border px-3 py-2.5 ${naoSeAplica ? "bg-slate-50 border-slate-200" : ok === null ? "bg-slate-50 border-slate-200" : ok ? "bg-emerald-50/70 border-emerald-200" : "bg-red-50/70 border-red-200"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-extrabold text-slate-800">
+          {rotulo} <span className="font-medium text-slate-400">(Meta: {menor ? "≤" : "≥"} {dec(meta, 2)}h)</span>
+        </p>
+        {naoSeAplica ? (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 whitespace-nowrap">Não se aplica</span>
+        ) : ok === null ? (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 whitespace-nowrap">Sem dado</span>
+        ) : ok ? (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 whitespace-nowrap inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Atingido</span>
+        ) : (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-red-100 text-red-700 whitespace-nowrap inline-flex items-center gap-1"><XCircle className="w-3 h-3" /> Não atingido</span>
+        )}
+      </div>
+      <div className="flex items-end justify-between mt-1">
+        <p className="font-mono text-xl font-black text-slate-900">{horas(valor)} <span className="text-[10px] font-bold text-slate-400">h</span></p>
+        <p className="text-[9px] text-slate-500 text-right">{nota}</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner with Clear Reference Month Indicator */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 text-white border border-emerald-800/40 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                <Target className="w-3.5 h-3.5 text-emerald-400" />
-                HERMES PERFORMANCE • MÓDULO INDICADORES
-              </span>
-
-              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" />
-                MÊS ANTERIOR (COMPETÊNCIA FECHADA)
-              </span>
-            </div>
-
-            <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2 flex-wrap">
-              <span>Indicadores de Performance das Franquias</span>
-              <span className="text-emerald-400 font-extrabold text-xl">({referenceMonthLabel})</span>
-            </h2>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Nesta aba ficam consolidados os <strong className="text-white">indicadores do mês anterior das franquias</strong> (por exemplo, <span className="text-emerald-300 font-bold">Julho de 2026</span>). Os índices operacionais de <strong className="text-white">TMA Stone</strong>, <strong className="text-white">TMA Ton</strong> e <strong className="text-white">Ciclo de Triagem</strong> apurados pela unidade no mês fechado são herdados automaticamente por todos os Angels da franquia para o cálculo da Remuneração Variável e Bônus de Rebate.
-            </p>
+    <div className="space-y-5">
+      {/* Banner */}
+      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+        <div className="max-w-2xl">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-full uppercase">
+              <Target className="w-3 h-3" /> Hermes Performance • Módulo Indicadores
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-full uppercase">
+              <Calendar className="w-3 h-3" /> {ehMesAnterior ? "Mês anterior (competência fechada)" : "Consulta de competência"}
+            </span>
           </div>
-
-          {/* Reference Month Selector Widget */}
-          <div className="bg-slate-800/80 backdrop-blur-xs p-4 rounded-2xl border border-slate-700 space-y-3 shrink-0 lg:w-80">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                Mês de Referência
-              </span>
-              {isPreviousMonthStandard && (
-                <span className="text-[9px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase">
-                  Vigente (Mês Anterior)
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 font-bold">Mês Fechado</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 text-white font-bold text-xs rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                >
-                  <option value="Julho">Julho (Mês Anterior)</option>
-                  <option value="Junho">Junho</option>
-                  <option value="Maio">Maio</option>
-                  <option value="Abril">Abril</option>
-                  <option value="Março">Março</option>
-                  <option value="Fevereiro">Fevereiro</option>
-                  <option value="Janeiro">Janeiro</option>
-                  <option value="Dezembro">Dezembro</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 font-bold">Ano</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 text-white font-bold text-xs rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                >
-                  <option value="2026">2026</option>
-                  <option value="2025">2025</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
-              <span>Metas Padrão:</span>
-              <span className="font-mono font-bold text-emerald-400">≤0,90h | ≤2,50h | ≤0,90h</span>
-            </div>
+          <h2 className="text-2xl font-black text-white mt-3">
+            Indicadores de Performance das Franquias <span className="text-emerald-400">({periodo})</span>
+          </h2>
+          <p className="text-xs text-slate-400 mt-2">
+            Aqui ficam consolidados os indicadores do mês fechado de cada franquia. TMA Stone, TMA Ton e Ciclo de Triagem apurados pela unidade são
+            herdados por todos os Angels da franquia no cálculo da Remuneração Variável. Tela só de consulta: para lançar ou corrigir, use{" "}
+            <b className="text-slate-200">Remuneração Variável → Franquias & Rebate</b>.
+          </p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 min-w-[17rem]">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-extrabold text-slate-300 uppercase flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Mês de referência</p>
+            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${ehMesAnterior ? "bg-emerald-500 text-white" : "bg-slate-600 text-slate-200"}`}>
+              {ehMesAnterior ? "VIGENTE (MÊS ANTERIOR)" : "CONSULTA"}
+            </span>
           </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <label className="block">
+              <span className="block text-[9px] font-bold text-slate-400 mb-1">Mês fechado</span>
+              <select aria-label="Mês" value={mes} onChange={(e) => setMes(Number(e.target.value))} className="w-full bg-slate-800 border border-white/10 text-white text-xs font-bold rounded-lg px-2.5 py-2">
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[9px] font-bold text-slate-400 mb-1">Ano</span>
+              <select aria-label="Ano" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="w-full bg-slate-800 border border-white/10 text-white text-xs font-bold rounded-lg px-2.5 py-2">
+                {anos.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-3">
+            Metas padrão: <span className="font-mono font-bold text-emerald-300">{metaTxt}</span>
+          </p>
         </div>
       </div>
 
-      {/* Network Overview Summary Cards for the Reference Month */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Card 1: Reference Period */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <span>Competência</span>
-            <Calendar className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-base font-black text-slate-900">{referenceMonthLabel}</div>
-          <div className="text-[10px] text-emerald-600 font-bold mt-1">Mês Fechado / Anterior</div>
+      {/* Cartões de resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4">
+          <div className="flex items-center justify-between"><p className="text-[10px] font-extrabold text-slate-500">Competência</p><Calendar className="w-4 h-4 text-emerald-500" /></div>
+          <p className="mt-2 text-lg font-black text-slate-900">{periodo}</p>
+          <p className="text-[10px] font-bold text-emerald-600">{ehMesAnterior ? "Mês fechado / Anterior" : "Consulta"}</p>
         </div>
-
-        {/* Card 2: 100% Conforming Franchises */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <span>100% Conformes</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-base font-black text-emerald-700">
-            {conformingCount} / {totalCount} ({conformingPct}%)
-          </div>
-          <div className="text-[10px] text-slate-500 mt-1">Bônus Integral (+3,0%)</div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4">
+          <div className="flex items-center justify-between"><p className="text-[10px] font-extrabold text-slate-500">100% Conformes</p><CheckCircle2 className="w-4 h-4 text-emerald-500" /></div>
+          <p className="mt-2 text-lg font-black text-emerald-600">
+            {nConformes} / {cartoes.length} ({cartoes.length ? Math.round((nConformes / cartoes.length) * 100) : 0}%)
+          </p>
+          <p className="text-[10px] text-slate-500">Todas as metas da franquia batidas</p>
         </div>
-
-        {/* Card 3: TMA Stone Avg */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <span>Média TMA Stone</span>
-            <Clock className="w-4 h-4 text-slate-600" />
+        {(
+          [
+            ["Média TMA Stone", mStone, s.tmaStoneTarget, s.tmaStoneLowerIsBetter],
+            ["Média TMA Ton", mTon, s.tmaTonTarget, s.tmaTonLowerIsBetter],
+            ["Média Ciclo Triagem", mCiclo, s.cicloTarget, s.cicloLowerIsBetter],
+          ] as const
+        ).map(([rotulo, v, meta, menor]) => (
+          <div key={rotulo} className="bg-white border border-slate-200 rounded-2xl p-4">
+            <div className="flex items-center justify-between"><p className="text-[10px] font-extrabold text-slate-500">{rotulo}</p><Clock className="w-4 h-4 text-slate-400" /></div>
+            <p className={`mt-2 text-lg font-black ${corMedia(v, meta, menor)}`}>{v === null ? "—" : `${dec(v, 2)}h`}</p>
+            <p className="text-[10px] text-slate-500">Meta global: {menor ? "≤" : "≥"} {dec(meta, 2)}h</p>
           </div>
-          <div className="text-base font-black font-mono text-slate-900">{avgStone}h</div>
-          <div className="text-[10px] text-slate-500 mt-1">Meta Global: ≤ 0,90h</div>
+        ))}
+      </div>
+
+      {/* Filtro */}
+      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5"><Filter className="w-3.5 h-3.5" /> Filtrar status:</span>
+          {(
+            [
+              ["TODAS", `Todas (${cartoes.length})`, "bg-slate-900 text-white border-slate-900", "bg-white text-slate-700 border-slate-200"],
+              ["CONFORME", `100% Conformes (${nConformes})`, "bg-emerald-600 text-white border-emerald-600", "bg-emerald-50 text-emerald-700 border-emerald-200"],
+              ["RESSALVA", `Com Ressalva (${nRessalva})`, "bg-amber-500 text-white border-amber-500", "bg-amber-50 text-amber-700 border-amber-200"],
+              ...(nPendentes > 0 ? [["PENDENTE", `Pendentes (${nPendentes})`, "bg-slate-600 text-white border-slate-600", "bg-slate-50 text-slate-600 border-slate-200"] as const] : []),
+            ] as ReadonlyArray<readonly [Filtro, string, string, string]>
+          ).map(([id, rotulo, ativo, inativo]) => (
+            <button key={id} onClick={() => setFiltro(id)} className={`px-3 py-1.5 rounded-full text-[11px] font-extrabold border ${filtro === id ? ativo : inativo}`}>
+              {rotulo}
+            </button>
+          ))}
         </div>
-
-        {/* Card 4: TMA Ton Avg */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <span>Média TMA Ton</span>
-            <Clock className="w-4 h-4 text-slate-600" />
-          </div>
-          <div className="text-base font-black font-mono text-slate-900">{avgTon}h</div>
-          <div className="text-[10px] text-slate-500 mt-1">Meta Global: ≤ 2,50h</div>
-        </div>
-
-        {/* Card 5: Ciclo Avg */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <span>Média Ciclo Triagem</span>
-            <Clock className="w-4 h-4 text-slate-600" />
-          </div>
-          <div className="text-base font-black font-mono text-slate-900">{avgCiclo}h</div>
-          <div className="text-[10px] text-slate-500 mt-1">Meta Global: ≤ 0,90h</div>
+        <div className="relative lg:w-64">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input aria-label="Buscar franquia" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar franquia ou cidade..." className="w-full border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs" />
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-500 flex items-center gap-1 mr-1">
-            <Filter className="w-3.5 h-3.5" /> Filtrar Status:
-          </span>
+      {visiveis.length === 0 && <p className="text-xs text-slate-500 bg-white border border-slate-200 rounded-2xl p-4">Nenhuma franquia encontrada com esse filtro.</p>}
 
-          <button
-            onClick={() => setStatusFilter("TODAS")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              statusFilter === "TODAS"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            Todas ({totalCount})
-          </button>
-
-          <button
-            onClick={() => setStatusFilter("CONFORME")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === "CONFORME"
-                ? "bg-emerald-600 text-white shadow-xs"
-                : "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            100% Conformes ({conformingCount})
-          </button>
-
-          <button
-            onClick={() => setStatusFilter("RESSALVA")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === "RESSALVA"
-                ? "bg-amber-600 text-white shadow-xs"
-                : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Com Ressalva ({ressalvaCount})
-          </button>
-        </div>
-
-        {/* Search input */}
-        <div className="relative w-full md:w-64">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar franquia ou cidade..."
-            className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-1.5 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
-          />
-        </div>
-      </div>
-
-      {/* Franchise KPI Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredFranchises.map((f) => {
-          const isEditing = editingId === f.franchiseId && editForm;
-          const kpi = isEditing && editForm ? editForm : f;
-
-          const tmaStoneVal = kpi.TMAStone ?? 0;
-          const tmaStoneTarget = kpi.TMAStoneTarget ?? 0.9;
-          const tmaTonVal = kpi.TMATon ?? 0;
-          const tmaTonTarget = kpi.TMATonTarget ?? 2.5;
-          const cicloVal = kpi.Ciclo ?? 0;
-          const cicloTarget = kpi.CicloTarget ?? 0.9;
-
-          const stoneMet = tmaStoneVal <= tmaStoneTarget;
-          const tonMet = tmaTonVal <= tmaTonTarget;
-          const cicloMet = cicloVal <= cicloTarget;
-          const allMet = stoneMet && tonMet && cicloMet;
-
-          // Calculate earned bonus percentage from KPIs
-          let earnedBonusPct = 0;
-          if (stoneMet) earnedBonusPct += 1.0;
-          if (tonMet) earnedBonusPct += 1.0;
-          if (cicloMet) earnedBonusPct += 1.0;
-
-          // Find angels affiliated with this franchise
-          const affiliatedAngels = angelSummaries.filter(
-            (ag) =>
-              ag.franchiseName.toLowerCase().includes(f.franchiseName.toLowerCase()) ||
-              f.franchiseName.toLowerCase().includes(ag.franchiseName.toLowerCase())
-          );
-
+      {/* Cartões por franquia */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {visiveis.map((c) => {
+          const borda = c.situacao === "CONFORME" ? "border-emerald-300" : c.situacao === "RESSALVA" ? "border-amber-300" : "border-slate-200";
           return (
-            <div
-              key={f.franchiseId}
-              className={`bg-white border-2 rounded-3xl p-5 shadow-xs transition-all relative flex flex-col justify-between ${
-                allMet
-                  ? "border-emerald-200 hover:border-emerald-400"
-                  : "border-amber-300 hover:border-amber-400"
-              }`}
-            >
-              <div>
-                {/* Reference Tag & Status Bar */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-emerald-600" />
-                    {referenceMonthLabel} (Mês Anterior)
-                  </span>
+            <div key={c.f.id} data-franquia={c.f.name} className={`bg-white border-2 ${borda} rounded-3xl p-4 space-y-3`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-extrabold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md uppercase">
+                  <Calendar className="w-3 h-3" /> {periodo}{ehMesAnterior ? " (mês anterior)" : ""}
+                </span>
+                {c.situacao === "CONFORME" && <span className="text-[9px] font-extrabold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 uppercase">Conforme (100%)</span>}
+                {c.situacao === "RESSALVA" && <span className="text-[9px] font-extrabold px-2 py-1 rounded-md bg-amber-100 text-amber-800 border border-amber-300 uppercase">Possui ressalva</span>}
+                {c.situacao === "PENDENTE" && <span className="text-[9px] font-extrabold px-2 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-300 uppercase">{c.ind ? "Dados pendentes" : "Sem lançamento"}</span>}
+              </div>
 
-                  <span
-                    className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                      allMet
-                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                        : "bg-amber-100 text-amber-900 border-amber-300"
-                    }`}
-                  >
-                    {allMet ? "Conforme (100%)" : "Possui Ressalva"}
-                  </span>
-                </div>
-
-                {/* Franchise Title Bar */}
-                <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-emerald-600" />
-                      <h3 className="text-base font-black text-slate-900">
-                        Franquia {f.franchiseName}
-                      </h3>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">{f.city}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {!isEditing ? (
-                      <button
-                        onClick={() => handleStartEdit(f)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
-                        title="Editar Indicadores Realizados / Metas"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleSaveEdit}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <Save className="w-3.5 h-3.5" /> Salvar
-                      </button>
-                    )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <FranchiseAvatar name={c.f.name} url={photos[c.f.id]} size={34} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-900">Franquia {c.f.name}</p>
+                    <p className="text-[10px] text-slate-500">{c.f.name}/{ufDe(c.f.cityRegion)}</p>
                   </div>
                 </div>
-
-                {/* Bonus Inheritance Summary Tag */}
-                <div className="mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-bold">Bônus Conquistado Franquia:</span>
-                  <span
-                    className={`font-black px-2 py-0.5 rounded-md ${
-                      earnedBonusPct === 3.0
-                        ? "bg-emerald-100 text-emerald-900"
-                        : "bg-amber-100 text-amber-900"
-                    }`}
-                  >
-                    +{earnedBonusPct.toFixed(1)}% / 3.0%
-                  </span>
-                </div>
-
-                {/* KPI Metrics Display */}
-                <div className="space-y-3">
-                  {/* 1. TMA Stone */}
-                  <div
-                    className={`p-3 rounded-2xl border transition-all ${
-                      stoneMet
-                        ? "bg-emerald-50/40 border-emerald-200/80"
-                        : "bg-rose-50/40 border-rose-200/80"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <span>TMA Stone</span>
-                          <span className="text-[10px] text-slate-500 font-normal">
-                            (Meta: ≤ {tmaStoneTarget.toFixed(2)}h)
-                          </span>
-                        </div>
-
-                        {isEditing ? (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <label className="text-[10px] font-bold text-slate-600">Real:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.TMAStone ?? 0}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  TMAStone: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                            <label className="text-[10px] font-bold text-slate-600">Meta:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.TMAStoneTarget ?? 0.9}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  TMAStoneTarget: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                          </div>
-                        ) : (
-                          <div className="text-lg font-black font-mono text-slate-900 mt-0.5">
-                            {tmaStoneVal.toFixed(2)}
-                            <span className="text-xs font-normal text-slate-500 ml-0.5">h</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1">
-                        {stoneMet ? (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Atingido
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-100 text-red-800 border border-red-300 font-bold text-xs">
-                            <XCircle className="w-3.5 h-3.5 text-red-600" />
-                            Não Atingido
-                          </span>
-                        )}
-                        <span className="text-[10px] font-mono text-slate-500">
-                          {stoneMet ? "+1,0% bônus" : "+0,0% bônus"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. TMA Ton */}
-                  <div
-                    className={`p-3 rounded-2xl border transition-all ${
-                      tonMet
-                        ? "bg-emerald-50/40 border-emerald-200/80"
-                        : "bg-rose-50/40 border-rose-200/80"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <span>TMA Ton</span>
-                          <span className="text-[10px] text-slate-500 font-normal">
-                            (Meta: ≤ {tmaTonTarget.toFixed(2)}h)
-                          </span>
-                        </div>
-
-                        {isEditing ? (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <label className="text-[10px] font-bold text-slate-600">Real:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.TMATon ?? 0}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  TMATon: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                            <label className="text-[10px] font-bold text-slate-600">Meta:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.TMATonTarget ?? 2.5}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  TMATonTarget: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                          </div>
-                        ) : (
-                          <div className="text-lg font-black font-mono text-slate-900 mt-0.5">
-                            {tmaTonVal.toFixed(2)}
-                            <span className="text-xs font-normal text-slate-500 ml-0.5">h</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1">
-                        {tonMet ? (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Atingido
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-100 text-red-800 border border-red-300 font-bold text-xs">
-                            <XCircle className="w-3.5 h-3.5 text-red-600" />
-                            Não Atingido
-                          </span>
-                        )}
-                        <span className="text-[10px] font-mono text-slate-500">
-                          {tonMet ? "+1,0% bônus" : "+0,0% bônus"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. Ciclo */}
-                  <div
-                    className={`p-3 rounded-2xl border transition-all ${
-                      cicloMet
-                        ? "bg-emerald-50/40 border-emerald-200/80"
-                        : "bg-rose-50/40 border-rose-200/80"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <span>Ciclo de Triagem</span>
-                          <span className="text-[10px] text-slate-500 font-normal">
-                            (Meta: ≤ {cicloTarget.toFixed(2)}h)
-                          </span>
-                        </div>
-
-                        {isEditing ? (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <label className="text-[10px] font-bold text-slate-600">Real:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.Ciclo ?? 0}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  Ciclo: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                            <label className="text-[10px] font-bold text-slate-600">Meta:</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.CicloTarget ?? 0.9}
-                              onChange={(e) =>
-                                setEditForm({
-                                  ...editForm,
-                                  CicloTarget: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border rounded bg-white"
-                            />
-                          </div>
-                        ) : (
-                          <div className="text-lg font-black font-mono text-slate-900 mt-0.5">
-                            {cicloVal.toFixed(2)}
-                            <span className="text-xs font-normal text-slate-500 ml-0.5">h</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1">
-                        {cicloMet ? (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Atingido
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-100 text-red-800 border border-red-300 font-bold text-xs">
-                            <XCircle className="w-3.5 h-3.5 text-red-600" />
-                            Não Atingido
-                          </span>
-                        )}
-                        <span className="text-[10px] font-mono text-slate-500">
-                          {cicloMet ? "+1,0% bônus" : "+0,0% bônus"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Affiliated Angels Inheritance Preview */}
-                {affiliatedAngels.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-2">
-                      <span className="flex items-center gap-1 text-emerald-700">
-                        <Users className="w-3.5 h-3.5" />
-                        Angels que herdam estes KPIs ({affiliatedAngels.length}):
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {affiliatedAngels.map((ag) => {
-                        const avatar = ag.fotoUrl ? driveToDirectUrl(ag.fotoUrl) : "";
-                        return (
-                          <div
-                            key={ag.angelId}
-                            className="flex items-center gap-1.5 bg-slate-100 border border-slate-200/80 px-2 py-1 rounded-xl text-[11px] font-medium text-slate-800"
-                            title={`${ag.angelName} (${ag.jobTitle})`}
-                          >
-                            {avatar ? (
-                              <img
-                                src={avatar}
-                                alt={ag.angelName}
-                                className="w-4 h-4 rounded-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] flex items-center justify-center font-bold">
-                                {ag.angelName.charAt(0)}
-                              </div>
-                            )}
-                            <span className="truncate max-w-[120px] font-semibold">{ag.angelName}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                {isAdmin && onEditar && (
+                  <button aria-label={`Editar indicadores de ${c.f.name}`} title="Editar em Remuneração Variável" onClick={onEditar} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50">
+                    <Pencil className="w-4 h-4" />
+                  </button>
                 )}
               </div>
 
-              {/* Bottom Inherited Note */}
-              <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-                <span className="flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
-                  Base {referenceMonthLabel}
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <span className="text-[11px] font-bold text-slate-600">Metas atingidas:</span>
+                <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${c.situacao === "CONFORME" ? "bg-emerald-100 text-emerald-700" : c.situacao === "RESSALVA" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-500"}`}>
+                  {c.ind ? `${c.atingidas} / ${c.total}` : "—"}
                 </span>
-                <span className="font-bold text-slate-800">
-                  Total OS: {kpi.totalOSMonth}
-                </span>
+              </div>
+
+              {caixa("TMA Stone", s.tmaStoneTarget, s.tmaStoneLowerIsBetter, c.ind?.tmaStone ?? null, c.h.s, c.h.s ? `vale ${dec(s.pctTmaStoneReversa, 1)}% (reversa) · ${dec(s.pctTmaStoneNormal, 1)}% (campo)` : c.h.s === false ? "+0,0% de bônus" : "")}
+              {caixa("TMA Ton", s.tmaTonTarget, s.tmaTonLowerIsBetter, c.ind?.tmaTon ?? null, c.h.t, c.h.t ? `vale ${dec(s.pctTmaTonReversa, 1)}% (reversa) · ${dec(s.pctTmaTonNormal, 1)}% (campo)` : c.h.t === false ? "+0,0% de bônus" : "")}
+              {caixa("Ciclo de Triagem", s.cicloTarget, s.cicloLowerIsBetter, c.ind?.ciclo ?? null, c.h.c, c.h.c ? `vale ${dec(s.pctCicloReversa, 1)}% (só reversa)` : c.h.c === false ? "+0,0% de bônus" : "", !c.precisaCiclo && c.h.c === null)}
+
+              <div>
+                <p className="text-[10px] font-extrabold text-emerald-700 flex items-center gap-1.5 mb-1.5">
+                  <Building2 className="w-3 h-3" /> Angels que herdaram estes KPIs ({c.angels.length}):
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {c.angels.length === 0 && <span className="text-[10px] text-slate-400">Nenhum Green Angel cadastrado nesta franquia.</span>}
+                  {c.angels.map((a) => {
+                    const faz = reversa ? !!reversa[a.id] : null;
+                    const pct = c.ind && faz !== null && c.h.s !== null && c.h.t !== null ? pctAngel(c.h, faz) : null;
+                    return (
+                      <span key={a.id} title={faz === null ? a.name : `${a.name}: ${faz ? "faz" : "não faz"} logística reversa (máximo ${dec(maxAngel(faz), 1)}%)`} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1 pr-2 py-0.5 text-[10px] font-bold text-slate-700">
+                        <PersonAvatar name={a.name} url={a.avatarUrl} size={18} />
+                        {a.name}
+                        <span className={pct === null ? "text-slate-400" : "text-emerald-700"}>{pct === null ? "—" : `+${dec(pct, 1)}%`}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-500">
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Base {MESES[mes - 1]} de {ano}</span>
+                <span className="font-extrabold text-slate-700">Total OS: {c.ind && c.ind.totalServiceOrders > 0 ? inteiro(c.ind.totalServiceOrders) : "—"}</span>
               </div>
             </div>
           );
         })}
       </div>
-
-      {filteredFranchises.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-3">
-          <Building2 className="w-12 h-12 text-slate-300 mx-auto" />
-          <h3 className="text-base font-bold text-slate-800">Nenhuma franquia encontrada</h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            Nenhum resultado corresponde ao filtro aplicado ou termo de busca para a competência de {referenceMonthLabel}.
-          </p>
-          <button
-            onClick={() => {
-              setStatusFilter("TODAS");
-              setSearchTerm("");
-            }}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
-          >
-            Limpar Filtros
-          </button>
-        </div>
-      )}
     </div>
   );
 };
