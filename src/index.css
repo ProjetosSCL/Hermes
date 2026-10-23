@@ -2,7 +2,7 @@
 @import "./design-system/tokens.css";
 /* ETAPA 2: para aplicar o visual Stone em todo o sistema, retire os sinais de comentario
    do comeco e do fim da linha logo abaixo. Para desfazer, recoloque os sinais. */
-@import "./design-system/theme-stone.css";
+ @import "./design-system/theme-stone.css";
 
 @layer utilities {
   .glass {
