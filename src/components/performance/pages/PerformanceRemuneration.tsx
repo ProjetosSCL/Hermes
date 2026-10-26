@@ -92,6 +92,13 @@ interface RebateForm {
   tmaTon: string;
   ciclo: string;
   notes: string;
+  osStone: string;
+  osTon: string;
+  slaStone: string;
+  slaTon: string;
+  slaBobina: string;
+  tmaBobina: string;
+  wfNota: string | null; // aviso do botão "Preencher do Workfinity"
 }
 
 interface FranqRow {
@@ -476,7 +483,13 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
         const ex = list.find((i) => i.franchiseId === franchiseId);
         setRebateForm((f) => {
           if (!f || f.locked || f.franchiseId !== franchiseId || f.year !== y || f.month !== m) return f;
-          if (!ex) return { ...f, existing: false };
+          if (!ex) {
+            // Destino sem lançamento: se os valores tinham sido carregados de OUTRO lançamento, apaga-os
+            // (senão dava para gravar os números de uma franquia/mês em outra por engano).
+            return f.existing
+              ? { ...f, existing: false, rebate: "", orders: "", tmaStone: "", tmaTon: "", ciclo: "", notes: "", osStone: "", osTon: "", slaStone: "", slaTon: "", slaBobina: "", tmaBobina: "", wfNota: null }
+              : f;
+          }
           return {
             ...f,
             existing: true,
@@ -486,6 +499,13 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
             tmaTon: fmt(ex.tmaTonActual),
             ciclo: fmt(ex.cicloActual),
             notes: ex.notes ?? "",
+            osStone: ex.osStone != null ? String(ex.osStone) : "",
+            osTon: ex.osTon != null ? String(ex.osTon) : "",
+            slaStone: fmt(ex.slaStone),
+            slaTon: fmt(ex.slaTon),
+            slaBobina: fmt(ex.slaBobina),
+            tmaBobina: fmt(ex.tmaBobina),
+            wfNota: null,
           };
         });
       })
@@ -547,7 +567,40 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
       tmaTon: fmt(ind?.tmaTonActual),
       ciclo: fmt(ind?.cicloActual),
       notes: ind?.notes ?? "",
+      osStone: ind?.osStone != null ? String(ind.osStone) : "",
+      osTon: ind?.osTon != null ? String(ind.osTon) : "",
+      slaStone: fmt(ind?.slaStone),
+      slaTon: fmt(ind?.slaTon),
+      slaBobina: fmt(ind?.slaBobina),
+      tmaBobina: fmt(ind?.tmaBobina),
+      wfNota: null,
     });
+  };
+
+  const [wfBusy, setWfBusy] = useState(false);
+  const preencherDoWorkfinity = async () => {
+    const f = rebateForm;
+    if (!f || !f.franchiseId) return;
+    setWfBusy(true);
+    try {
+      const r = await api.sumDailyStoneTon(f.franchiseId, f.year, f.month);
+      const mesTxt = `${MESES[f.month - 1]}/${f.year}`;
+      setRebateForm((cur) => {
+        if (!cur || cur.franchiseId !== f.franchiseId || cur.year !== f.year || cur.month !== f.month) return cur;
+        if (r.dias === 0) return { ...cur, wfNota: `Nenhum relatório do Workfinity importado para esta franquia em ${mesTxt}.` };
+        return {
+          ...cur,
+          osStone: String(r.stone),
+          osTon: String(r.ton),
+          wfNota: `Preenchido com as OS baixadas de ${r.dias} dia(s) importados em ${mesTxt} (Stone ${r.stone}, TON ${r.ton}). Se faltou importar algum dia, os números ficam parciais: confira.`,
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      showToast("err", "Não foi possível buscar os relatórios do Workfinity.");
+    } finally {
+      setWfBusy(false);
+    }
   };
 
   const saveRebateForm = async () => {
@@ -561,6 +614,21 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
       showToast("err", "Informe o rebate total ou o total de OS.");
       return;
     }
+    const slas = [f.slaStone, f.slaTon, f.slaBobina].map(toNumOrNull);
+    if (slas.some((v) => v !== null && (v < 0 || v > 100))) {
+      showToast("err", "SLA deve estar entre 0 e 100.");
+      return;
+    }
+    const contagens = [f.osStone, f.osTon].map(toNumOrNull);
+    if (contagens.some((v) => v !== null && v < 0)) {
+      showToast("err", "OS Stone e OS TON não podem ser negativas.");
+      return;
+    }
+    const tmaBob = toNumOrNull(f.tmaBobina);
+    if (tmaBob !== null && tmaBob < 0) {
+      showToast("err", "TMA Bobina não pode ser negativo.");
+      return;
+    }
     try {
       const saved = await api.upsertFranchiseIndicator({
         franchiseId: f.franchiseId,
@@ -572,6 +640,12 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
         rebateAmount: toNum(f.rebate),
         totalServiceOrders: Math.round(toNum(f.orders)),
         notes: f.notes.trim() === "" ? undefined : f.notes,
+        osStone: contagens[0] === null ? null : Math.round(contagens[0]),
+        osTon: contagens[1] === null ? null : Math.round(contagens[1]),
+        slaStone: slas[0],
+        slaTon: slas[1],
+        slaBobina: slas[2],
+        tmaBobina: tmaBob,
       });
       setAllIndicators((prev) => (allLoaded ? mergeIndicator(prev, saved) : prev));
       if (saved.year === year && saved.month === month) {
@@ -860,6 +934,18 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
     return { y: d.getFullYear(), m: d.getMonth() + 1 };
   });
   const franqDataPronta = franqAll ? allLoaded : ready;
+  const avisoSoma = (() => {
+    if (!rebateForm) return null;
+    const a = toNumOrNull(rebateForm.osStone);
+    const b = toNumOrNull(rebateForm.osTon);
+    const total = Math.round(toNum(rebateForm.orders));
+    if (a === null || b === null || total <= 0) return null;
+    const soma = Math.round(a) + Math.round(b);
+    if (soma === total) return null;
+    return soma < total
+      ? { forte: false, texto: `Stone + TON = ${soma}, e o total é ${total} (diferença de ${total - soma}). Costuma ser OS de outro tipo, como bobina; confira se não é erro de digitação.` }
+      : { forte: true, texto: `Stone + TON (${soma}) é maior que o total de OS (${total}). Confira os números.` };
+  })();
   const chipIndicador = (rotulo: string, valor: number | null, meta: number, menorMelhor: boolean) => {
     const ok = hit(valor, meta, menorMelhor);
     const cls = ok === null ? "bg-slate-100 text-slate-400" : ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
@@ -1230,7 +1316,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                       aria-label="Franquia do lançamento"
                       disabled={rebateForm.locked}
                       value={rebateForm.franchiseId}
-                      onChange={(e) => setRebateForm({ ...rebateForm, franchiseId: e.target.value })}
+                      onChange={(e) => setRebateForm({ ...rebateForm, franchiseId: e.target.value, wfNota: null })}
                       className={inputCls}
                     >
                       {[...franchises].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((f) => (
@@ -1244,7 +1330,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                       aria-label="Mês do lançamento"
                       disabled={rebateForm.locked}
                       value={rebateForm.month}
-                      onChange={(e) => setRebateForm({ ...rebateForm, month: Number(e.target.value) })}
+                      onChange={(e) => setRebateForm({ ...rebateForm, month: Number(e.target.value), wfNota: null })}
                       className={inputCls}
                     >
                       {MESES.map((m, i) => (
@@ -1258,7 +1344,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                       aria-label="Ano do lançamento"
                       disabled={rebateForm.locked}
                       value={rebateForm.year}
-                      onChange={(e) => setRebateForm({ ...rebateForm, year: Number(e.target.value) })}
+                      onChange={(e) => setRebateForm({ ...rebateForm, year: Number(e.target.value), wfNota: null })}
                       className={inputCls}
                     >
                       {years.map((y) => (
@@ -1296,6 +1382,62 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                     <span className="block text-[10px] font-bold text-slate-500 mb-1">Observações</span>
                     <input className={inputCls} value={rebateForm.notes} onChange={(e) => setRebateForm({ ...rebateForm, notes: e.target.value })} />
                   </label>
+                </div>
+                <div className="border border-slate-200 rounded-2xl p-3 space-y-2">
+                  <p className="text-[11px] font-extrabold text-slate-700">
+                    SLA e divisão das OS <span className="font-medium text-slate-400">(opcional — alimenta o Histórico)</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["slaStone", "SLA Stone (%)"],
+                        ["slaTon", "SLA TON (%)"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label key={key} className="block">
+                        <span className="block text-[10px] font-bold text-slate-500 mb-1">{label}</span>
+                        <input inputMode="decimal" className={inputCls} value={rebateForm[key]} onChange={(e) => setRebateForm({ ...rebateForm, [key]: e.target.value })} />
+                      </label>
+                    ))}
+                    <label className="block">
+                      <span className="block text-[10px] font-bold text-slate-500 mb-1">OS Stone</span>
+                      <input inputMode="numeric" className={inputCls} value={rebateForm.osStone} onChange={(e) => setRebateForm({ ...rebateForm, osStone: e.target.value, wfNota: null })} />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[10px] font-bold text-slate-500 mb-1">OS TON</span>
+                      <input inputMode="numeric" className={inputCls} value={rebateForm.osTon} onChange={(e) => setRebateForm({ ...rebateForm, osTon: e.target.value, wfNota: null })} />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={preencherDoWorkfinity}
+                    disabled={wfBusy}
+                    className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 rounded-lg text-[11px] font-extrabold text-slate-700"
+                  >
+                    {wfBusy ? "Buscando..." : "Preencher OS Stone/TON do Workfinity"}
+                  </button>
+                  {rebateForm.wfNota && <p className="text-[11px] text-slate-600">{rebateForm.wfNota}</p>}
+                  {avisoSoma && (
+                    <p className={`text-[11px] flex items-start gap-1.5 ${avisoSoma.forte ? "text-red-700" : "text-amber-700"}`}>
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {avisoSoma.texto}
+                    </p>
+                  )}
+                  <details className="text-[11px]">
+                    <summary className="cursor-pointer font-bold text-slate-600">Bobina (opcional)</summary>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {(
+                        [
+                          ["slaBobina", "SLA Bobina (%)"],
+                          ["tmaBobina", "TMA Bobina"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label key={key} className="block">
+                          <span className="block text-[10px] font-bold text-slate-500 mb-1">{label}</span>
+                          <input inputMode="decimal" className={inputCls} value={rebateForm[key]} onChange={(e) => setRebateForm({ ...rebateForm, [key]: e.target.value })} />
+                        </label>
+                      ))}
+                    </div>
+                  </details>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 space-y-0.5">
                   <p>Dedução do bônus ({dedPct}%): <b>- {brl((toNum(rebateForm.rebate) * dedPct) / 100)}</b></p>
