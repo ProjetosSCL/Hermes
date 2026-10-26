@@ -501,6 +501,17 @@ export interface FranchiseMonthlyIndicator {
   rebateAmount: number;
   totalServiceOrders: number;
   notes?: string;
+  /** Opcionais (alimentam o Histórico). undefined = "não mexer"; null = "sem valor / apagar". */
+  osStone?: number | null;
+  osTon?: number | null;
+  slaStone?: number | null;
+  slaTon?: number | null;
+  slaBobina?: number | null;
+  tmaBobina?: number | null;
+}
+
+function nOuNulo(v: any): number | null {
+  return v === null || v === undefined ? null : num(v);
 }
 
 export interface AgentCompensationRecord {
@@ -586,6 +597,12 @@ function rowToIndicator(row: any): FranchiseMonthlyIndicator {
     rebateAmount: num(row.rebate_amount),
     totalServiceOrders: num(row.total_service_orders),
     notes: row.notes ?? undefined,
+    osStone: nOuNulo(row.os_stone),
+    osTon: nOuNulo(row.os_ton),
+    slaStone: nOuNulo(row.sla_stone),
+    slaTon: nOuNulo(row.sla_ton),
+    slaBobina: nOuNulo(row.sla_bobina),
+    tmaBobina: nOuNulo(row.tma_bobina),
   };
 }
 
@@ -709,15 +726,17 @@ const rowToDaily = (r: any): DailyProductionRow => ({
 });
 
 /** Lê a produção diária de um intervalo de datas (o banco devolve no máximo 1.000 linhas por vez, por isso pagina). */
-export async function fetchDailyProduction(from: string, to: string): Promise<DailyProductionRow[]> {
+export async function fetchDailyProduction(from: string, to: string, franchiseId?: string): Promise<DailyProductionRow[]> {
   const out: DailyProductionRow[] = [];
   const PAGINA = 1000;
   for (let inicio = 0; ; inicio += PAGINA) {
-    const { data, error } = await supabase
+    let consulta = supabase
       .from('daily_production')
       .select('day,franchise_id,tech_key,agent_id,technician_name,os_done,os_cancelled,os_pending,os_stone,os_ton,by_group')
       .gte('day', from)
-      .lte('day', to)
+      .lte('day', to);
+    if (franchiseId) consulta = consulta.eq('franchise_id', franchiseId);
+    const { data, error } = await consulta
       .order('day', { ascending: true })
       .order('franchise_id', { ascending: true })
       .order('tech_key', { ascending: true })
@@ -727,6 +746,26 @@ export async function fetchDailyProduction(from: string, to: string): Promise<Da
     if (!data || data.length < PAGINA) break;
   }
   return out;
+}
+
+export interface DailyStoneTonSum {
+  stone: number;
+  ton: number;
+  baixadas: number;
+  dias: number;
+}
+
+/** Soma, das OS baixadas importadas do Workfinity, quantas são Stone e quantas são TON numa franquia e mês. */
+export async function sumDailyStoneTon(franchiseId: string, year: number, month: number): Promise<DailyStoneTonSum> {
+  const mm = String(month).padStart(2, '0');
+  const ultimo = String(new Date(year, month, 0).getDate()).padStart(2, '0');
+  const rows = await fetchDailyProduction(`${year}-${mm}-01`, `${year}-${mm}-${ultimo}`, franchiseId);
+  return {
+    stone: rows.reduce((t, r) => t + r.osStone, 0),
+    ton: rows.reduce((t, r) => t + r.osTon, 0),
+    baixadas: rows.reduce((t, r) => t + r.osDone, 0),
+    dias: new Set(rows.filter((r) => r.osDone > 0).map((r) => r.day)).size,
+  };
 }
 
 /** Último dia que já tem produção importada (ou null se nunca importou). */
@@ -784,6 +823,13 @@ export async function upsertFranchiseIndicator(ind: FranchiseMonthlyIndicator): 
         total_service_orders: ind.totalServiceOrders,
         notes: ind.notes ?? null,
         updated_at: new Date().toISOString(),
+        // só envia o que foi informado: quem não passa o campo não apaga o que já existe
+        ...(ind.osStone !== undefined ? { os_stone: ind.osStone } : {}),
+        ...(ind.osTon !== undefined ? { os_ton: ind.osTon } : {}),
+        ...(ind.slaStone !== undefined ? { sla_stone: ind.slaStone } : {}),
+        ...(ind.slaTon !== undefined ? { sla_ton: ind.slaTon } : {}),
+        ...(ind.slaBobina !== undefined ? { sla_bobina: ind.slaBobina } : {}),
+        ...(ind.tmaBobina !== undefined ? { tma_bobina: ind.tmaBobina } : {}),
       },
       { onConflict: 'franchise_id,year,month' }
     )
