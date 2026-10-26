@@ -672,6 +672,8 @@ export const PerformanceHistory2025: React.FC = () => {
                           <th key={t.id} className="py-2.5 px-2 text-center">OS {t.name}</th>
                         ))}
                         <th className="py-2.5 px-2 text-center">Total OS</th>
+                        <th className="py-2.5 px-2 text-center">OS Stone</th>
+                        <th className="py-2.5 px-2 text-center">OS Ton</th>
                         <th className="py-2.5 px-2 text-center">SLA Stone</th>
                         <th className="py-2.5 px-2 text-center">SLA Ton</th>
                         <th className="py-2.5 px-2 text-center">TMA Stone</th>
@@ -696,6 +698,8 @@ export const PerformanceHistory2025: React.FC = () => {
                               {r.totalServiceOrders > 0 ? inteiro(r.totalServiceOrders) : "-"}
                             </span>
                           </td>
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-600">{r.osStone !== null ? inteiro(r.osStone) : "—"}</td>
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-600">{r.osTon !== null ? inteiro(r.osTon) : "—"}</td>
                           <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700">{pct(r.slaStone)}</td>
                           <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700">{pct(r.slaTon)}</td>
                           <td className="py-2.5 px-2 text-center">{chipTma(r.tmaStone, metaStone)}</td>
