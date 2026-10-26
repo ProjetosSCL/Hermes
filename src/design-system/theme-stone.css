@@ -29,3 +29,10 @@
   --color-slate-900: #1E281E;
   --color-slate-950: #141B14;
 }
+/* Títulos de página (h1 e h2) em ABC Gravity */
+h1,
+h2 {
+  font-family: "ABC Gravity", "Roobert", system-ui, sans-serif;
+  font-weight: 400;
+  font-synthesis-weight: none;
+}
