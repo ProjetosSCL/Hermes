@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hermes - Gestão Logística</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'><rect width='240' height='240' rx='48' fill='%23008248'/><g fill='none' stroke='white' stroke-width='8' stroke-linecap='round'><path d='M12 135H38M6 150H42M18 165H38'/><rect x='48' y='92' width='56' height='52' rx='7' stroke-width='7'/><path d='M48 114H104' stroke-width='5'/><path d='M118 126C132 110 152 110 168 118C176 122 184 132 192 132'/><path d='M172 98L190 142'/><circle cx='82' cy='168' r='25' stroke-width='9'/><circle cx='192' cy='168' r='25' stroke-width='9'/></g><circle cx='82' cy='168' r='9' fill='white'/><circle cx='192' cy='168' r='9' fill='white'/><path d='M112 72C112 55 126 44 144 44C164 44 176 56 176 74C176 80 173 85 167 88L145 98L126 92C117 88 112 80 112 72Z' fill='white'/></svg>" />
+    <!-- Tema visual: "stone" (novo) ou "classico" (anterior). Troque com ?tema=classico ou ?tema=stone na URL.
+         A escolha fica salva neste navegador. Para mudar o tema padrão, altere a palavra após "||" abaixo. -->
+    <script>
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search).get('tema');
+          if (p === 'stone' || p === 'classico') localStorage.setItem('hermes-tema', p);
+          var t = localStorage.getItem('hermes-tema') || 'stone';
+          if (t === 'stone') document.documentElement.setAttribute('data-theme', 'stone');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,6 +1,6 @@
-/* Stone Design System, Etapa 2: troca a paleta "emerald" e "slate" e a fonte do sistema inteiro.
-   Para desfazer, basta comentar de novo a linha que importa este arquivo no index.css. */
-@theme {
+/* Tema Stone: só vale quando a página tem  <html data-theme="stone">.
+   Sem esse atributo, o Hermes aparece com o visual clássico (o de antes). */
+:root[data-theme="stone"] {
   --font-sans: "Roobert", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 
   /* Verdes (emerald -> verdes da marca Stone) */
@@ -29,10 +29,11 @@
   --color-slate-900: #1E281E;
   --color-slate-950: #141B14;
 }
-/* Títulos de página (h1 e h2) em ABC Gravity */
-h1,
-h2 {
+
+/* Títulos de página (h1 e h2) em ABC Gravity, só no tema Stone */
+:root[data-theme="stone"] h1,
+:root[data-theme="stone"] h2 {
   font-family: "ABC Gravity", "Roobert", system-ui, sans-serif;
-  font-weight: 500;
+  font-weight: 400;
   font-synthesis-weight: none;
 }
