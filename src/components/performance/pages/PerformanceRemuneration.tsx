@@ -26,6 +26,7 @@ import {
   Calculator,
 } from "lucide-react";
 import { Franchise, UserAgent } from "../../../types";
+import { lerNumeroBR, OpcoesNumero } from "../../../utils/numeroBR";
 import { supabase } from "../../../services/supabaseClient";
 import * as api from "../../../services/api";
 
@@ -63,13 +64,27 @@ const MESES = [
 const brl = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
-const toNum = (s: string): number => {
-  const n = parseFloat((s ?? "").toString().replace(",", "."));
-  return isNaN(n) ? 0 : n;
+// Números digitados no padrão brasileiro ("R$ 23.922,56", "1.001", "97,8%"). Texto que não é número
+// nunca vira 0 em silêncio: os formulários conferem com primeiroInvalido() antes de salvar.
+const toNum = (s: string, op?: OpcoesNumero): number => {
+  const n = lerNumeroBR(s, op);
+  return n === null || Number.isNaN(n) ? 0 : n;
 };
-const toNumOrNull = (s: string): number | null => {
-  if ((s ?? "").toString().trim() === "") return null;
-  return toNum(s);
+const toNumOrNull = (s: string, op?: OpcoesNumero): number | null => {
+  const n = lerNumeroBR(s, op);
+  return n === null || Number.isNaN(n) ? null : n;
+};
+const toIndOuNulo = (s: string): number | null => toNumOrNull(s, { indicador: true }); // TMA, SLA, Ciclo
+const primeiroInvalido = (campos: [string, string, boolean?][]): string | null => {
+  for (const [rotulo, valor, indicador] of campos) if (Number.isNaN(lerNumeroBR(valor, { indicador: !!indicador }))) return rotulo;
+  return null;
+};
+const msgInvalido = (rotulo: string) => `Valor inválido em "${rotulo}". Digite só números, por exemplo 23.922,56.`;
+const ROTULOS_REGRA: Record<string, string> = {
+  tmaStoneTarget: "Meta de TMA Stone", tmaTonTarget: "Meta de TMA TON", cicloTarget: "Meta de Ciclo",
+  pctTmaStoneReversa: "% TMA Stone (com reversa)", pctTmaTonReversa: "% TMA TON (com reversa)", pctCicloReversa: "% Ciclo (com reversa)",
+  pctTmaStoneNormal: "% TMA Stone (sem reversa)", pctTmaTonNormal: "% TMA TON (sem reversa)",
+  rebateDeductionPct: "Desconto sobre o rebate", camisa10BonusAmount: "Bônus Camisa 10",
 };
 const fmt = (v: number | null | undefined): string =>
   v === null || v === undefined ? "" : String(v).replace(".", ",");
@@ -279,6 +294,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const [calcs, setCalcs] = useState<Record<string, api.AngelVariableCalc | null>>({});
   const [confirmNoVar, setConfirmNoVar] = useState<Record<string, boolean>>({});
   const [selectedAngelId, setSelectedAngelId] = useState("");
+  const [settingsText, setSettingsText] = useState<Record<string, string>>({});
   const [equipment, setEquipment] = useState<api.AgentEquipment[]>([]);
   const [franchisePhotos, setFranchisePhotos] = useState<Record<string, string>>({});
   // Em qual mês estão os dados carregados: evita mostrar (ou salvar) números do mês anterior
@@ -344,6 +360,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
         setAgents(a);
         setSettings(s);
         setSettingsDraft(s);
+        setSettingsText({});
         setLeads(l);
       } catch (err) {
         console.error(err);
@@ -606,6 +623,14 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const saveRebateForm = async () => {
     const f = rebateForm;
     if (!f) return;
+    const ruim = primeiroInvalido([
+      ["Rebate total", f.rebate], ["Total de OS", f.orders], ["TMA Stone", f.tmaStone, true], ["TMA TON", f.tmaTon, true], ["Ciclo", f.ciclo, true],
+      ["SLA Stone", f.slaStone, true], ["SLA TON", f.slaTon, true], ["OS Stone", f.osStone], ["OS TON", f.osTon], ["SLA Bobina", f.slaBobina, true], ["TMA Bobina", f.tmaBobina, true],
+    ]);
+    if (ruim) {
+      showToast("err", msgInvalido(ruim));
+      return;
+    }
     if (!f.franchiseId) {
       showToast("err", "Escolha a franquia.");
       return;
@@ -614,17 +639,17 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
       showToast("err", "Informe o rebate total ou o total de OS.");
       return;
     }
-    const slas = [f.slaStone, f.slaTon, f.slaBobina].map(toNumOrNull);
+    const slas = [f.slaStone, f.slaTon, f.slaBobina].map((v) => toIndOuNulo(v));
     if (slas.some((v) => v !== null && (v < 0 || v > 100))) {
       showToast("err", "SLA deve estar entre 0 e 100.");
       return;
     }
-    const contagens = [f.osStone, f.osTon].map(toNumOrNull);
+    const contagens = [f.osStone, f.osTon].map((v) => toNumOrNull(v));
     if (contagens.some((v) => v !== null && v < 0)) {
       showToast("err", "OS Stone e OS TON não podem ser negativas.");
       return;
     }
-    const tmaBob = toNumOrNull(f.tmaBobina);
+    const tmaBob = toIndOuNulo(f.tmaBobina);
     if (tmaBob !== null && tmaBob < 0) {
       showToast("err", "TMA Bobina não pode ser negativo.");
       return;
@@ -634,9 +659,9 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
         franchiseId: f.franchiseId,
         year: f.year,
         month: f.month,
-        tmaStoneActual: toNumOrNull(f.tmaStone),
-        tmaTonActual: toNumOrNull(f.tmaTon),
-        cicloActual: toNumOrNull(f.ciclo),
+        tmaStoneActual: toIndOuNulo(f.tmaStone),
+        tmaTonActual: toIndOuNulo(f.tmaTon),
+        cicloActual: toIndOuNulo(f.ciclo),
         rebateAmount: toNum(f.rebate),
         totalServiceOrders: Math.round(toNum(f.orders)),
         notes: f.notes.trim() === "" ? undefined : f.notes,
@@ -682,6 +707,10 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const saveAngelOs = async (agent: UserAgent) => {
     const d = compDrafts[agent.id];
     if (!d) return;
+    if (primeiroInvalido([["OS do Angel", d.angelOs]])) {
+      showToast("err", msgInvalido("OS do Angel"));
+      return;
+    }
     const os = Math.round(toNum(d.angelOs));
     if (os <= 0) {
       showToast("err", "Informe o total de OS do Angel (maior que zero).");
@@ -712,6 +741,13 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
   const saveCompensation = async (agent: UserAgent) => {
     const d = compDrafts[agent.id];
     if (!d) return;
+    const ruim = primeiroInvalido([
+      ["Salário fixo", d.baseSalary], ["Ajuda manutenção", d.maintenance], ["Ajuda alimentação", d.food], ["Ajuda combustível", d.fuel], ["Ajuda hospedagem", d.lodging],
+    ]);
+    if (ruim) {
+      showToast("err", msgInvalido(ruim));
+      return;
+    }
     try {
       // Recalcula no banco na hora de salvar: nunca grava um valor de tela desatualizado.
       const calc = await api.calculateAngelVariable(agent.id, year, month);
@@ -773,11 +809,31 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
     }
   };
 
+  const campoMeta = (key: keyof api.CompensationSettings): string =>
+    settingsText[key as string] ?? fmt(settingsDraft ? (settingsDraft[key] as number) : null);
+  const editarMeta = (key: keyof api.CompensationSettings, texto: string) => {
+    setSettingsText((prev) => ({ ...prev, [key as string]: texto }));
+    const n = lerNumeroBR(texto, { indicador: key !== "camisa10BonusAmount" });
+    if (n !== null && !Number.isNaN(n)) setSettingsDraft((d) => (d ? { ...d, [key]: n } : d));
+  };
+
   const saveSettings = async () => {
     if (!settingsDraft) return;
+    for (const [key, texto] of Object.entries(settingsText)) {
+      const n = lerNumeroBR(texto, { indicador: key !== "camisa10BonusAmount" });
+      if (n === null || Number.isNaN(n) || n < 0) {
+        showToast("err", `Confira o campo "${ROTULOS_REGRA[key] ?? key}": digite um número (exemplo: 0,90).`);
+        return;
+      }
+      if ((key === "rebateDeductionPct" || key.startsWith("pct")) && n > 100) {
+        showToast("err", `"${ROTULOS_REGRA[key] ?? key}" deve estar entre 0 e 100.`);
+        return;
+      }
+    }
     try {
       await api.updateCompensationSettings(settingsDraft);
       setSettings(settingsDraft);
+      setSettingsText({});
       showToast("ok", "Regras salvas.");
     } catch (err) {
       console.error(err);
@@ -885,12 +941,19 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
     rebateTotal: toNum(sim.rebate),
     franchiseOs: Math.round(toNum(sim.franchiseOs)),
     angelOs: Math.round(toNum(sim.angelOs)),
-    tmaStone: toNumOrNull(sim.tmaStone),
-    tmaTon: toNumOrNull(sim.tmaTon),
-    ciclo: toNumOrNull(sim.ciclo),
+    tmaStone: toIndOuNulo(sim.tmaStone),
+    tmaTon: toIndOuNulo(sim.tmaTon),
+    ciclo: toIndOuNulo(sim.ciclo),
     reverse: sim.reverse,
   };
-  const simResult = settings ? simulateAngelVariable(settings, simInput) : null;
+  const simInvalido = (
+    [["rebate", false], ["franchiseOs", false], ["angelOs", false], ["tmaStone", true], ["tmaTon", true], ["ciclo", true]] as const
+  ).some(([k, ind]) => Number.isNaN(lerNumeroBR(sim[k], { indicador: ind })));
+  const simBase = settings ? simulateAngelVariable(settings, simInput) : null;
+  const simResult =
+    simBase && simInvalido
+      ? { ...simBase, problem: "Há um campo com valor inválido. Digite só números (exemplo: 22.604,93).", amount: 0 }
+      : simBase;
   const setSimField = (patch: Partial<SimDraft>) => setSim((prev) => ({ ...prev, ...patch }));
 
   const fotoDaFranquia = (nome: string) => {
@@ -1373,6 +1436,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                       <input
                         inputMode="decimal"
                         className={inputCls}
+                        placeholder={key === "rebate" ? "ex.: 23.922,56" : undefined}
                         value={rebateForm[key]}
                         onChange={(e) => setRebateForm({ ...rebateForm, [key]: e.target.value })}
                       />
@@ -1674,7 +1738,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                     </div>
                     <label className="block md:col-span-2">
                       <span className="block text-[10px] font-bold text-slate-500 mb-1">Salário fixo (R$)</span>
-                      <input inputMode="decimal" className={inputCls} value={selDraft.baseSalary} onChange={(e) => setSel({ baseSalary: e.target.value })} />
+                      <input inputMode="decimal" className={inputCls} placeholder="ex.: 1.500,00" value={selDraft.baseSalary} onChange={(e) => setSel({ baseSalary: e.target.value })} />
                     </label>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1954,8 +2018,8 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
                   <input
                     inputMode="decimal"
                     className={inputCls}
-                    value={fmt(settingsDraft[targetKey])}
-                    onChange={(e) => setSettingsDraft({ ...settingsDraft, [targetKey]: toNum(e.target.value) })}
+                    value={campoMeta(targetKey)}
+                    onChange={(e) => editarMeta(targetKey, e.target.value)}
                   />
                   <select
                     className={inputCls}
@@ -1980,7 +2044,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
               ] as const).map(([key, label]) => (
                 <label key={key} className="block">
                   <span className="block text-[10px] font-bold text-slate-500 mb-1">{label}</span>
-                  <input inputMode="decimal" className={inputCls} value={fmt(settingsDraft[key])} onChange={(e) => setSettingsDraft({ ...settingsDraft, [key]: toNum(e.target.value) })} />
+                  <input inputMode="decimal" className={inputCls} value={campoMeta(key)} onChange={(e) => editarMeta(key, e.target.value)} />
                 </label>
               ))}
             </div>
@@ -1995,7 +2059,7 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
               ] as const).map(([key, label]) => (
                 <label key={key} className="block">
                   <span className="block text-[10px] font-bold text-slate-500 mb-1">{label}</span>
-                  <input inputMode="decimal" className={inputCls} value={fmt(settingsDraft[key])} onChange={(e) => setSettingsDraft({ ...settingsDraft, [key]: toNum(e.target.value) })} />
+                  <input inputMode="decimal" className={inputCls} value={campoMeta(key)} onChange={(e) => editarMeta(key, e.target.value)} />
                 </label>
               ))}
             </div>
@@ -2007,8 +2071,8 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
               <input
                 inputMode="decimal"
                 className={inputCls}
-                value={fmt(settingsDraft.rebateDeductionPct)}
-                onChange={(e) => setSettingsDraft({ ...settingsDraft, rebateDeductionPct: toNum(e.target.value) })}
+                value={campoMeta("rebateDeductionPct")}
+                onChange={(e) => editarMeta("rebateDeductionPct", e.target.value)}
               />
             </label>
           </div>
@@ -2019,8 +2083,8 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
               <input
                 inputMode="decimal"
                 className={inputCls}
-                value={fmt(settingsDraft.camisa10BonusAmount)}
-                onChange={(e) => setSettingsDraft({ ...settingsDraft, camisa10BonusAmount: toNum(e.target.value) })}
+                value={campoMeta("camisa10BonusAmount")}
+                onChange={(e) => editarMeta("camisa10BonusAmount", e.target.value)}
               />
             </label>
           </div>
