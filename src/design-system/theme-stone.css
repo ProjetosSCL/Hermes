@@ -28,12 +28,104 @@
   --color-slate-800: #2B332B;
   --color-slate-900: #1E281E;
   --color-slate-950: #141B14;
+
+  /* Cantos mais arredondados (etapa 3) */
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
 }
 
-/* Títulos de página (h1 e h2) em ABC Gravity, só no tema Stone */
+/* Títulos de página (h1 e h2) em ABC Gravity */
 :root[data-theme="stone"] h1,
 :root[data-theme="stone"] h2 {
   font-family: "ABC Gravity", "Roobert", system-ui, sans-serif;
   font-weight: 400;
   font-synthesis-weight: none;
+}
+
+/* Fundo da página um pouco mais cinza, para os cards brancos se destacarem */
+:root[data-theme="stone"] .min-h-screen.bg-slate-50 {
+  background-color: var(--color-slate-100);
+}
+
+/* ===== Cabeçalho em pílula ===== */
+:root[data-theme="stone"] [data-st="header"] {
+  background: linear-gradient(to bottom, var(--color-slate-100) 70%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 0;
+  box-shadow: none;
+  padding: 12px 16px 6px;
+}
+:root[data-theme="stone"] [data-st="header-inner"] {
+  background: #fff;
+  border-radius: 2rem;
+  padding: 8px 16px;
+  box-shadow: 0 8px 24px rgba(30, 40, 30, 0.08);
+}
+:root[data-theme="stone"] [data-st="header-inner"] .rounded-xl,
+:root[data-theme="stone"] [data-st="header-inner"] .rounded-lg {
+  border-radius: 999px;
+}
+:root[data-theme="stone"] [data-st="header-inner"] button[class*="bg-emerald-600"] {
+  background-color: var(--color-emerald-800);
+}
+
+/* ===== Performance Operacional: menu lateral só com ícones (telas largas) ===== */
+@media (min-width: 1024px) {
+  :root[data-theme="stone"] [data-st="perf-shell"] {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  :root[data-theme="stone"] [data-st="perf-shell"] > * {
+    margin: 0;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] {
+    position: sticky;
+    top: 96px;
+    background: #fff;
+    border: 0;
+    border-radius: 2rem;
+    padding: 12px 10px;
+    box-shadow: 0 8px 24px rgba(30, 40, 30, 0.08);
+    overflow: visible;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] > div {
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] > div > div {
+    display: none;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button span {
+    display: none;
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button svg {
+    color: var(--color-slate-600);
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button:hover {
+    background: var(--color-slate-100);
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button[data-active="true"],
+  :root[data-theme="stone"] [data-st="perf-nav"] button[data-active="true"]:hover {
+    background: var(--color-emerald-800);
+  }
+  :root[data-theme="stone"] [data-st="perf-nav"] button[data-active="true"] svg {
+    color: #fff;
+  }
 }
