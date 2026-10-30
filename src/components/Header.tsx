@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAgent } from '../types';
-import { ShieldCheck, User, Code2, Bell, LayoutDashboard, Smartphone, Building2, Crown, LogOut, BarChart3 } from 'lucide-react';
+import { ShieldCheck, User, Code2, Bell, LayoutDashboard, Smartphone, Building2, Crown, LogOut, BarChart3, Palette } from 'lucide-react';
 import { DeliveryLogo } from './DeliveryLogo';
 
 interface HeaderProps {
@@ -20,6 +20,18 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMachineList,
   onLogout,
 }) => {
+  // Alterna entre o tema Stone e o Clássico. A escolha fica salva no navegador;
+  // a página recarrega para que fontes, cores e gráficos troquem juntos.
+  const alternarTema = () => {
+    try {
+      const atual = document.documentElement.getAttribute('data-theme') === 'stone' ? 'stone' : 'classico';
+      localStorage.setItem('hermes-tema', atual === 'stone' ? 'classico' : 'stone');
+    } catch {
+      /* sem acesso ao armazenamento: não faz nada */
+    }
+    window.location.reload();
+  };
+
   return (
     <header data-st="header" className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 py-3 shadow-sm">
       <div data-st="header-inner" className="max-w-7xl mx-auto flex items-center justify-between gap-3">
@@ -113,6 +125,16 @@ export const Header: React.FC<HeaderProps> = ({
             title="Inspecionar Estrutura de Dados JSON"
           >
             <Code2 className="w-4 h-4" />
+          </button>
+
+          {/* Alternar tema visual (Stone / Clássico) */}
+          <button
+            onClick={alternarTema}
+            className="p-2 text-slate-500 hover:text-emerald-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
+            title="Alternar tema visual (Stone / Clássico)"
+            aria-label="Alternar tema visual"
+          >
+            <Palette className="w-4 h-4" />
           </button>
 
           {/* User Profile Avatar, Name, Job Title & Logout */}
