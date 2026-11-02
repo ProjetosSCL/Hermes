@@ -12,6 +12,16 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
+const TEMAS = ['classico', 'stone', 'glass'] as const;
+type Tema = (typeof TEMAS)[number];
+const NOMES_TEMA: Record<Tema, string> = { classico: 'Clássico', stone: 'Stone', glass: 'Stone Glass' };
+
+const temaAtual = (): Tema => {
+  const el = document.documentElement;
+  if (el.getAttribute('data-theme') !== 'stone') return 'classico';
+  return el.getAttribute('data-glass') === 'on' ? 'glass' : 'stone';
+};
+
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
   viewMode,
@@ -20,12 +30,13 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMachineList,
   onLogout,
 }) => {
-  // Alterna entre o tema Stone e o Clássico. A escolha fica salva no navegador;
+  const proximoTema = TEMAS[(TEMAS.indexOf(temaAtual()) + 1) % TEMAS.length];
+
+  // Passa para o próximo tema (Clássico > Stone > Stone Glass). A escolha fica salva no navegador;
   // a página recarrega para que fontes, cores e gráficos troquem juntos.
   const alternarTema = () => {
     try {
-      const atual = document.documentElement.getAttribute('data-theme') === 'stone' ? 'stone' : 'classico';
-      localStorage.setItem('hermes-tema', atual === 'stone' ? 'classico' : 'stone');
+      localStorage.setItem('hermes-tema', proximoTema);
     } catch {
       /* sem acesso ao armazenamento: não faz nada */
     }
@@ -127,12 +138,12 @@ export const Header: React.FC<HeaderProps> = ({
             <Code2 className="w-4 h-4" />
           </button>
 
-          {/* Alternar tema visual (Stone / Clássico) */}
+          {/* Alternar tema visual (Clássico / Stone / Stone Glass) */}
           <button
             onClick={alternarTema}
             className="p-2 text-slate-500 hover:text-emerald-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
-            title="Alternar tema visual (Stone / Clássico)"
-            aria-label="Alternar tema visual"
+            title={`Tema atual: ${NOMES_TEMA[temaAtual()]}. Clique para mudar para ${NOMES_TEMA[proximoTema]}.`}
+            aria-label={`Alternar tema visual (agora: ${NOMES_TEMA[temaAtual()]})`}
           >
             <Palette className="w-4 h-4" />
           </button>
