@@ -163,3 +163,102 @@
 :root[data-theme="stone"] [data-st="hero"] button.bg-emerald-500:hover {
   background-color: var(--color-emerald-300);
 }
+
+/* =====================================================================
+   STONE GLASS: efeito de vidro por cima do tema Stone.
+   Vale quando a página tem  data-theme="stone"  E  data-glass="on".
+   ===================================================================== */
+
+/* Fundo com manchas suaves de cor (o vidro precisa de algo atrás para aparecer) */
+:root[data-theme="stone"][data-glass="on"] .min-h-screen.bg-slate-50 {
+  background-color: var(--color-slate-100);
+  background-image:
+    radial-gradient(60rem 38rem at 8% -8%, rgba(0, 215, 0, 0.20), transparent 62%),
+    radial-gradient(52rem 34rem at 96% 6%, rgba(0, 130, 103, 0.18), transparent 62%),
+    radial-gradient(46rem 30rem at 55% 108%, rgba(165, 250, 0, 0.16), transparent 62%);
+}
+
+/* Cabeçalho */
+:root[data-theme="stone"][data-glass="on"] [data-st="header"] {
+  background: transparent;
+}
+:root[data-theme="stone"][data-glass="on"] [data-st="header-inner"] {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 30px rgba(0, 70, 30, 0.10);
+}
+
+/* Cards da Performance */
+:root[data-theme="stone"][data-glass="on"] [data-st="card"] {
+  background-color: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 28px rgba(0, 70, 30, 0.08);
+}
+:root[data-theme="stone"][data-glass="on"] [data-st="card"].border-emerald-200 {
+  border-color: rgba(110, 232, 140, 0.8);
+}
+:root[data-theme="stone"][data-glass="on"] [data-st="card"]:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 14px 32px rgba(0, 70, 30, 0.14);
+}
+
+/* Destaque do topo: verde escuro translúcido */
+:root[data-theme="stone"][data-glass="on"] [data-st="hero"] {
+  background: linear-gradient(135deg, rgba(0, 70, 30, 0.93), rgba(0, 100, 25, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 16px 40px rgba(0, 70, 30, 0.24);
+}
+
+/* Menu lateral da Performance (telas largas) */
+@media (min-width: 1024px) {
+  :root[data-theme="stone"][data-glass="on"] [data-st="perf-nav"] {
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 10px 30px rgba(0, 70, 30, 0.10);
+  }
+}
+
+/* Desfoque: só em telas maiores (poupa o celular dos agentes) e quando o navegador suporta */
+@media (min-width: 768px) {
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    :root[data-theme="stone"][data-glass="on"] [data-st="header-inner"],
+    :root[data-theme="stone"][data-glass="on"] [data-st="card"],
+    :root[data-theme="stone"][data-glass="on"] [data-st="hero"] {
+      -webkit-backdrop-filter: blur(16px) saturate(160%);
+      backdrop-filter: blur(16px) saturate(160%);
+    }
+  }
+}
+@media (min-width: 1024px) {
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    :root[data-theme="stone"][data-glass="on"] [data-st="perf-nav"] {
+      -webkit-backdrop-filter: blur(16px) saturate(160%);
+      backdrop-filter: blur(16px) saturate(160%);
+    }
+  }
+}
+
+/* Quem pede menos transparência no sistema recebe versão opaca (acessibilidade) */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="stone"][data-glass="on"] [data-st="header-inner"],
+  :root[data-theme="stone"][data-glass="on"] [data-st="card"],
+  :root[data-theme="stone"][data-glass="on"] [data-st="perf-nav"] {
+    background-color: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root[data-theme="stone"][data-glass="on"] [data-st="hero"] {
+    background: var(--color-emerald-800);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
