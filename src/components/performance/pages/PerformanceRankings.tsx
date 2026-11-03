@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Trophy, Award, Building2, Users, MessageCircle, Upload, Copy, Calendar, X, AlertTriangle, CheckCircle2, Shirt } from "lucide-react";
+import { Trophy, Award, Building2, Users, MessageCircle, Upload, Copy, Calendar, X, AlertTriangle, CheckCircle2, Shirt, Camera } from "lucide-react";
 import * as api from "../../../services/api";
 import { supabase } from "../../../services/supabaseClient";
 import { Franchise, UserAgent } from "../../../types";
+import { X1PrintModal } from "./X1PrintCards";
 import { buildDailyRecords, decodeWorkfinityBytes, parseWorkfinity, rotuloDia, DailyRecord, ImportSummary } from "../../../utils/workfinityDaily";
 
 /**
@@ -122,6 +123,7 @@ export const PerformanceRankings: React.FC = () => {
   const pedidos = useRef<Set<string>>(new Set());
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [showPrints, setShowPrints] = useState(false);
   const [impNome, setImpNome] = useState("");
   const [impErro, setImpErro] = useState<string | null>(null);
   const [impParsed, setImpParsed] = useState<{ records: DailyRecord[]; summary: ImportSummary } | null>(null);
@@ -503,6 +505,11 @@ export const PerformanceRankings: React.FC = () => {
               {isAdmin && (
                 <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold">
                   <Upload className="w-3.5 h-3.5" /> Importar Workfinity Diário
+                </button>
+              )}
+              {rowsMes !== null && totalDia > 0 && (
+                <button onClick={() => setShowPrints(true)} className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-extrabold">
+                  <Camera className="w-3.5 h-3.5" /> Gerar prints
                 </button>
               )}
             </div>
@@ -939,6 +946,18 @@ export const PerformanceRankings: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+      {showPrints && (
+        <X1PrintModal
+          diaRotulo={rotuloDia(day)}
+          diaIso={day}
+          totalDia={totalDia}
+          franquias={frRank.map((x) => ({ id: x.f.id, nome: x.f.name, uf: ufDe(x.f.cityRegion), os: x.os, acum: x.acum, foto: photos[x.f.id] }))}
+          angels={angelRank.map((x) => ({ id: x.a.id, nome: x.a.name, franquia: x.a.franchiseName ?? "", cargo: x.a.jobTitle || "Green Angel", os: x.os, media: x.media, foto: x.a.avatarUrl }))}
+          xMedia={xMedia}
+          onClose={() => setShowPrints(false)}
+          onToast={showToast}
+        />
       )}
     </div>
   );
