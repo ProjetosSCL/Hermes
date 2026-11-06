@@ -1,0 +1,23 @@
+/* Stone Design System, Etapa 1: só cadastra fontes e cores novas (prefixo "st-").
+   Nada muda no visual enquanto as classes bg-st-*, text-st-* etc. não forem usadas. */
+@font-face{font-family:"ABC Gravity";font-display:swap;src:url("/fonts/Gravity-Normal.woff2") format("woff2")}
+@font-face{font-family:"Roobert";font-weight:400;font-display:swap;src:url("/fonts/Roobert-Regular.otf") format("opentype")}
+@font-face{font-family:"Roobert";font-weight:500;font-display:swap;src:url("/fonts/Roobert-Medium.otf") format("opentype")}
+@font-face{font-family:"Roobert";font-weight:600;font-display:swap;src:url("/fonts/Roobert-SemiBold.otf") format("opentype")}
+@font-face{font-family:"Roobert";font-weight:700;font-display:swap;src:url("/fonts/Roobert-Bold.otf") format("opentype")}
+@font-face{font-family:"Roobert";font-weight:800;font-display:swap;src:url("/fonts/Roobert-Heavy.otf") format("opentype")}
+
+@theme {
+  --font-display: "ABC Gravity", "Roobert", system-ui, sans-serif;
+
+  --color-st-green: #00D700;
+  --color-st-green-dark: #00461E;
+  --color-st-green-700: #007D00;
+  --color-st-lime: #A5FA00;
+  --color-st-ink: #1E281E;
+  --color-st-bg: #ECF1EB;
+  --color-st-mint: #DDFFE3;
+  --color-st-lilac: #DEDEFF;
+  --color-st-rose: #FFD6DE;
+  --color-st-sand: #FFEAC0;
+}

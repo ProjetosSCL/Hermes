@@ -3,6 +3,7 @@ import { Database, Download, MessageCircle, Shirt, Target, TrendingUp, Clock, Us
 import * as api from "../../../services/api";
 import { supabase } from "../../../services/supabaseClient";
 import { Franchise, UserAgent } from "../../../types";
+import { chartColors } from "../../../design-system/chartColors";
 
 /**
  * Histórico Consolidado das Franquias.
@@ -17,8 +18,8 @@ const ufDe = (regiao?: string): string => {
 };
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const MES_ABR = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-const PALETA = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6"];
-const COR_SEM_DIVISAO = "#cbd5e1";
+const PALETA = chartColors.palette;
+const COR_SEM_DIVISAO = chartColors.neutral;
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dec = (v: number | null, casas: number) =>
@@ -300,9 +301,9 @@ export const PerformanceHistory2025: React.FC = () => {
     const ticks: number[] = [];
     for (let v = 0; v <= teto + 0.0001; v += passo) ticks.push(Number(v.toFixed(4)));
     const series = [
-      { nome: "Ciclo Triagem (h)", cor: "#8b5cf6", valores: rows.map((r) => r.ciclo) },
-      { nome: "TMA Stone (h)", cor: "#10b981", valores: rows.map((r) => r.tmaStone) },
-      { nome: "TMA Ton (h)", cor: "#f59e0b", valores: rows.map((r) => r.tmaTon) },
+      { nome: "Ciclo Triagem (h)", cor: chartColors.palette[3], valores: rows.map((r) => r.ciclo) },
+      { nome: "TMA Stone (h)", cor: chartColors.palette[0], valores: rows.map((r) => r.tmaStone) },
+      { nome: "TMA Ton (h)", cor: chartColors.palette[2], valores: rows.map((r) => r.tmaTon) },
     ];
     return (
       <>
@@ -313,8 +314,8 @@ export const PerformanceHistory2025: React.FC = () => {
               <text x={L - 6} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{dec(v, 1)}</text>
             </g>
           ))}
-          <line x1={L} x2={W - R} y1={y(metaStone)} y2={y(metaStone)} stroke="#10b981" strokeDasharray="5 4" strokeWidth="1" opacity="0.7" />
-          <text x={W - R} y={y(metaStone) - 3} textAnchor="end" fontSize="8" fill="#059669">Meta {dec(metaStone, 2)}h</text>
+          <line x1={L} x2={W - R} y1={y(metaStone)} y2={y(metaStone)} stroke={chartColors.palette[0]} strokeDasharray="5 4" strokeWidth="1" opacity="0.7" />
+          <text x={W - R} y={y(metaStone) - 3} textAnchor="end" fontSize="8" fill={chartColors.meta}>Meta {dec(metaStone, 2)}h</text>
           {series.map((s) => {
             const segmentos: string[][] = [];
             s.valores.forEach((v, i) => {

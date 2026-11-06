@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAgent } from '../types';
-import { ShieldCheck, User, Code2, Bell, LayoutDashboard, Smartphone, Building2, Crown, LogOut, BarChart3 } from 'lucide-react';
+import { ShieldCheck, User, Code2, Bell, LayoutDashboard, Smartphone, Building2, Crown, LogOut, BarChart3, Palette } from 'lucide-react';
 import { DeliveryLogo } from './DeliveryLogo';
 
 interface HeaderProps {
@@ -12,6 +12,16 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
+const TEMAS = ['classico', 'stone', 'glass'] as const;
+type Tema = (typeof TEMAS)[number];
+const NOMES_TEMA: Record<Tema, string> = { classico: 'Clássico', stone: 'Stone', glass: 'Stone Glass' };
+
+const temaAtual = (): Tema => {
+  const el = document.documentElement;
+  if (el.getAttribute('data-theme') !== 'stone') return 'classico';
+  return el.getAttribute('data-glass') === 'on' ? 'glass' : 'stone';
+};
+
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
   viewMode,
@@ -20,9 +30,22 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMachineList,
   onLogout,
 }) => {
+  const proximoTema = TEMAS[(TEMAS.indexOf(temaAtual()) + 1) % TEMAS.length];
+
+  // Passa para o próximo tema (Clássico > Stone > Stone Glass). A escolha fica salva no navegador;
+  // a página recarrega para que fontes, cores e gráficos troquem juntos.
+  const alternarTema = () => {
+    try {
+      localStorage.setItem('hermes-tema', proximoTema);
+    } catch {
+      /* sem acesso ao armazenamento: não faz nada */
+    }
+    window.location.reload();
+  };
+
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 py-3 shadow-sm">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+    <header data-st="header" className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 py-3 shadow-sm">
+      <div data-st="header-inner" className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Brand & Franchise */}
         <div className="flex items-center gap-3">
           <DeliveryLogo size="md" />
@@ -113,6 +136,16 @@ export const Header: React.FC<HeaderProps> = ({
             title="Inspecionar Estrutura de Dados JSON"
           >
             <Code2 className="w-4 h-4" />
+          </button>
+
+          {/* Alternar tema visual (Clássico / Stone / Stone Glass) */}
+          <button
+            onClick={alternarTema}
+            className="p-2 text-slate-500 hover:text-emerald-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
+            title={`Tema atual: ${NOMES_TEMA[temaAtual()]}. Clique para mudar para ${NOMES_TEMA[proximoTema]}.`}
+            aria-label={`Alternar tema visual (agora: ${NOMES_TEMA[temaAtual()]})`}
+          >
+            <Palette className="w-4 h-4" />
           </button>
 
           {/* User Profile Avatar, Name, Job Title & Logout */}

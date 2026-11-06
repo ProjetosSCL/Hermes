@@ -87,7 +87,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner & Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
+      <div data-st="hero" className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
         <div>
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider mb-1">
             <Zap className="w-4 h-4 text-emerald-400" />
@@ -121,7 +121,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap items-center gap-4 text-xs font-medium">
+      <div data-st="card" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap items-center gap-4 text-xs font-medium">
         <div className="flex items-center gap-1.5 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
           <Filter className="w-4 h-4 text-emerald-600" />
           Filtros Globais:
@@ -192,7 +192,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
       {/* Main KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total OS Hoje */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
             <span>Total OS do Dia</span>
             <Calendar className="w-4 h-4 text-emerald-600" />
@@ -216,7 +216,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         </div>
 
         {/* Total OS Mês */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
             <span>Total OS do Mês</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
@@ -240,7 +240,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         </div>
 
         {/* Média Diária Real */}
-        <div className="bg-white border border-emerald-200 bg-emerald-50/30 rounded-xl p-4 shadow-xs">
+        <div data-st="card" className="bg-white border border-emerald-200 bg-emerald-50/30 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-emerald-900 text-xs font-bold mb-1">
             <span>Média Diária Real</span>
             <Target className="w-4 h-4 text-emerald-600" />
@@ -260,7 +260,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         </div>
 
         {/* Metas Cumpridas */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
             <span>Cumprimento de Metas</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -281,7 +281,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         </div>
 
         {/* Remuneração Prevista Total */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-emerald-500 transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
             <span>Repasse Bônus Previsto</span>
             <Award className="w-4 h-4 text-emerald-600" />
@@ -361,7 +361,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
       {/* Grid Comparisons & Rankings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Angels Ranking */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
@@ -440,7 +440,7 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({
         </div>
 
         {/* Top Franchises Ranking */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+        <div data-st="card" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
