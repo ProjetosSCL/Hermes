@@ -426,9 +426,9 @@ export const HermesPerformanceModule: React.FC = () => {
   ];
 
   return (
-    <div data-st="perf-shell" className="space-y-6">
+    <div className="space-y-6">
       {/* Module Internal Sub-Header Navigation Tabs */}
-      <div data-st="perf-nav" className="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-lg overflow-x-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-lg overflow-x-auto">
         <div className="flex items-center gap-1 min-w-max">
           <div className="px-3 py-2 text-emerald-400 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 border-r border-slate-800 pr-4 mr-1">
             <Zap className="w-4 h-4 text-emerald-400" />
@@ -442,9 +442,6 @@ export const HermesPerformanceModule: React.FC = () => {
             return (
               <button
                 key={page.id}
-                data-active={isActive}
-                title={page.label}
-                aria-label={page.label}
                 onClick={() => setActivePage(page.id)}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                   isActive
@@ -505,27 +502,9 @@ export const HermesPerformanceModule: React.FC = () => {
 
           {activePage === "history" && <PerformanceHistory2025 />}
 
-          {activePage === "remuneration" && (
-            <PerformanceRemuneration
-              franchisesKPIs={franchisesKPIs}
-              angelSummaries={angelSummaries}
-              monthlyRebateRecords={monthlyRebateRecords}
-              onUpdateAngelSummary={handleUpdateAngelSummary}
-              onUpdateFranchiseKPI={handleUpdateFranchiseKPI}
-              onAddMonthlyRebateRecord={handleAddMonthlyRebateRecord}
-              onUpdateMonthlyRebateRecord={handleUpdateMonthlyRebateRecord}
-              onDeleteMonthlyRebateRecord={handleDeleteMonthlyRebateRecord}
-            />
-          )}
+          {activePage === "remuneration" && <PerformanceRemuneration onIrParaCamisa10={() => setActivePage("camisa10")} />}
 
-          {activePage === "camisa10" && (
-            <PerformanceCamisa10
-              camisa10Leads={camisa10Leads}
-              angelSummaries={angelSummaries}
-              onAddCamisa10Lead={handleAddCamisa10Lead}
-              onUpdateLeadStatus={handleUpdateCamisa10Status}
-            />
-          )}
+          {activePage === "camisa10" && <PerformanceCamisa10 />}
 
           {activePage === "rankings" && <PerformanceRankings />}
 
