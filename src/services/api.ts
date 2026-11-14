@@ -538,6 +538,12 @@ export interface Camisa10Lead {
   bonusAmount: number | null;
   createdAt: string;
   approvedAt: string | null;
+  /** Ficha do cliente indicado (indicações antigas não têm estes campos). */
+  stoneCode: string | null;
+  clientName: string | null;
+  clientCity: string | null;
+  clientPhone: string | null;
+  notes: string | null;
 }
 
 const num = (v: any, fallback = 0): number => (v === null || v === undefined ? fallback : Number(v));
@@ -1059,6 +1065,11 @@ function rowToLead(row: any): Camisa10Lead {
     bonusAmount: row.bonus_amount === null ? null : num(row.bonus_amount),
     createdAt: row.created_at,
     approvedAt: row.approved_at,
+    stoneCode: row.stone_code ?? null,
+    clientName: row.client_name ?? null,
+    clientCity: row.client_city ?? null,
+    clientPhone: row.client_phone ?? null,
+    notes: row.notes ?? null,
   };
 }
 
@@ -1075,6 +1086,78 @@ export async function createCamisa10Lead(agentId: string, leadDescription: strin
   const { data, error } = await supabase
     .from('camisa10_leads')
     .insert({ agent_id: agentId, lead_description: leadDescription })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToLead(data);
+}
+
+export interface FichaCamisa10 {
+  agentId: string;
+  stoneCode: string;
+  clientName: string;
+  clientCity: string;
+  clientPhone: string; // só dígitos, com DDD
+  notes: string;
+}
+
+/**
+ * Cadastra uma indicação com a ficha completa do cliente.
+ * Angel só consegue criar a dele, pendente e sem bônus (o banco confere); o Admin pode criar para qualquer
+ * agente e já como aprovada. O mesmo Stone Code não entra duas vezes (erro 23505 do banco).
+ */
+export async function createCamisa10Indication(
+  ficha: FichaCamisa10,
+  status: 'PENDENTE' | 'APROVADO' = 'PENDENTE',
+  bonusAmount?: number
+): Promise<Camisa10Lead> {
+  const aprovada = status === 'APROVADO';
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .insert({
+      agent_id: ficha.agentId,
+      lead_description: ficha.clientName,
+      stone_code: ficha.stoneCode,
+      client_name: ficha.clientName,
+      client_city: ficha.clientCity || null,
+      client_phone: ficha.clientPhone,
+      notes: ficha.notes || null,
+      status,
+      bonus_amount: aprovada ? bonusAmount ?? null : null,
+      approved_at: aprovada ? new Date().toISOString() : null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToLead(data);
+}
+
+/** Corrige os dados de uma indicação (só Admin). Não mexe no status nem no bônus. */
+export async function updateCamisa10Indication(id: string, ficha: FichaCamisa10): Promise<Camisa10Lead> {
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .update({
+      agent_id: ficha.agentId,
+      lead_description: ficha.clientName,
+      stone_code: ficha.stoneCode,
+      client_name: ficha.clientName,
+      client_city: ficha.clientCity || null,
+      client_phone: ficha.clientPhone,
+      notes: ficha.notes || null,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToLead(data);
+}
+
+/** Volta uma indicação aprovada ou rejeitada para "em análise" (só Admin): tira o bônus e a data de aprovação. */
+export async function setCamisa10Pending(id: string): Promise<Camisa10Lead> {
+  const { data, error } = await supabase
+    .from('camisa10_leads')
+    .update({ status: 'PENDENTE', bonus_amount: null, approved_at: null })
+    .eq('id', id)
     .select()
     .single();
   if (error) throw error;
