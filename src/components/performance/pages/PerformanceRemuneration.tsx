@@ -39,6 +39,8 @@ import * as api from "../../../services/api";
  * são garantidas pelo próprio banco.
  */
 interface PerformanceRemunerationProps {
+  /** Atalho para a aba Camisa 10 do módulo (único lugar de cadastro e aprovação das indicações). */
+  onIrParaCamisa10?: () => void;
   franchisesKPIs?: any;
   angelSummaries?: any;
   monthlyRebateRecords?: any;
@@ -272,7 +274,7 @@ const FranchiseAvatar: React.FC<{ name: string; url?: string; size?: number }> =
   );
 };
 
-export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = () => {
+export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = ({ onIrParaCamisa10 }) => {
   const now = new Date();
   // O mês corrente ainda não fechou: a tela abre no mês anterior (competência vigente).
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -1061,7 +1063,16 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
           {subTab("EXTRATO", "Extrato Individual", <UserCheck className="w-3.5 h-3.5" />)}
           {subTab("SIMULACAO", "Simulação em Tempo Real", <Calculator className="w-3.5 h-3.5" />)}
           {subTab("FRANQUIAS", "Franquias & Rebate", <Building2 className="w-3.5 h-3.5" />)}
-          {subTab("CAMISA10", "Camisa 10", <Shirt className="w-3.5 h-3.5" />)}
+          {onIrParaCamisa10 && (
+            <button
+              onClick={onIrParaCamisa10}
+              title="O cadastro e a aprovação das indicações ficam na aba Camisa 10"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-extrabold text-slate-300 hover:bg-white/10"
+            >
+              <Shirt className="w-3.5 h-3.5" />
+              Camisa 10 ↗
+            </button>
+          )}
           {subTab("REGRAS", "Regras e Metas", <Sliders className="w-3.5 h-3.5" />)}
         </div>
       </div>
@@ -1925,74 +1936,6 @@ export const PerformanceRemuneration: React.FC<PerformanceRemunerationProps> = (
               <span className="text-sm font-black text-emerald-400">VARIÁVEL SIMULADO:</span>
               <span className="font-mono text-2xl font-black text-emerald-400">{brl(simResult.amount)}</span>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ---------------------------------------------------------- CAMISA 10 */}
-      {tab === "CAMISA10" && settings && (
-        <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-            <p className="text-xs font-extrabold text-slate-900">
-              Registrar indicação (bônus de {brl(settings.camisa10BonusAmount)} quando aprovada)
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <select className={inputCls} value={newLeadAgent} onChange={(e) => setNewLeadAgent(e.target.value)}>
-                <option value="">Quem indicou...</option>
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-              <input
-                className={inputCls + " md:col-span-1"}
-                placeholder="Nome/contato do indicado"
-                value={newLeadText}
-                onChange={(e) => setNewLeadText(e.target.value)}
-              />
-              <button
-                onClick={addLead}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-extrabold"
-              >
-                <Plus className="w-3.5 h-3.5" /> Registrar
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {leads.length === 0 && <p className="text-xs text-slate-500">Nenhuma indicação registrada ainda.</p>}
-            {leads.map((l) => (
-              <div key={l.id} className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-extrabold text-slate-900">{agentName(l.agentId)}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {l.leadDescription} • {new Date(l.createdAt).toLocaleDateString("pt-BR")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      l.status === "APROVADO"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : l.status === "REJEITADO"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {l.status === "APROVADO" ? `Aprovada (${brl(l.bonusAmount ?? 0)})` : l.status === "REJEITADO" ? "Rejeitada" : "Pendente"}
-                  </span>
-                  {l.status === "PENDENTE" && (
-                    <>
-                      <button onClick={() => reviewLead(l, "APROVADO")} className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg" title="Aprovar">
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => reviewLead(l, "REJEITADO")} className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg" title="Rejeitar">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
